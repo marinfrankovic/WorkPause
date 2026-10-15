@@ -52,7 +52,7 @@ Use JDK 17 or 21 and the Android SDK. Set `JAVA_HOME` and `ANDROID_HOME`.
 On Windows:
 
 ```powershell
-.\gradlew.bat :app:assembleDebug :app:lintDebug
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 adb -s emulator-5556 install -r .\app\build\outputs\apk\debug\app-debug.apk
 ```
 
@@ -92,9 +92,14 @@ managed independently from upstream.
 
 - Emulator installation and appearance do not establish Samsung or enterprise compatibility.
 - Location gating is a convenience, not a security enforcement boundary.
-- The inherited external `TEST_FIRE` hook remains a known security issue and must be
-  addressed before public distribution or privileged use on a real work phone.
-- No public release is published as part of the initial setup.
+- The inherited external testing hook has been removed. Internal retry broadcasts are
+  non-exported, accessibility is restricted to System UI, and generic confirmation
+  buttons are no longer clicked automatically.
+- Location-based automatic resumes require a fresh fix with valid accuracy and
+  revalidate location after unlocking. Manual resume remains an explicit override.
+- This is an initial preview, not a claim of verified compatibility with Samsung or Intune.
+- **Not tested on a real phone**, including the Samsung Galaxy S24 Ultra / One UI 9.
+  See the [verification record](docs/VERIFICATION.md) for the checks actually performed.
 
 ## Artwork
 
