@@ -1,6 +1,12 @@
 <!-- Modified for WorkPause: independent project documentation. -->
 # WorkPause
 
+[![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](#requirements-and-setup)
+[![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)](app/src/main/java/com/worksched)
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)](app/src/main/java/com/worksched/ui)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Build](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml/badge.svg)](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml)
+
 <img src="docs/workpause-icon.svg" width="128" height="128" alt="WorkPause icon">
 
 **Work on your schedule.**
@@ -11,8 +17,11 @@ scheduler service.
 
 ## Features
 
-- Scheduled resume and pause times, with weekday selection.
-- Manual resume and pause controls.
+- Independent Turn ON (resume) and Turn OFF (pause) times for every weekday.
+- Copy one day's hours and enabled status to any other days.
+- Overnight hours, a master automation switch, and an explicit Save button.
+- Simple One UI-inspired layout, with setup and optional location controls in Settings.
+- Manual resume/pause control.
 - Silent control after a one-time ADB permission grant.
 - Optional resume-at-a-place location check.
 - Deferred resume when Android requires the device or work profile to be unlocked.
@@ -39,11 +48,23 @@ Folder is not a substitute for a work profile.
    adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE
    ```
 
-3. Open **Setup & permissions** and review exact alarms and battery restrictions.
-4. Select weekdays and times, then save the schedule.
-5. Enable background location only if using **Resume at a place**.
+3. Open **Settings** using the gear and review setup, exact alarms, and battery restrictions.
+4. Select a weekday, enable **Use day**, and choose its **Turn ON** and **Turn OFF** times.
+   Repeat for other days or use **Copy to other days**, then tap **Save**.
+5. Optional location controls stay under Settings; grant background location only if using them.
+
+An OFF time earlier than ON ends the work interval the next day. Disabling a weekday
+prevents new hours starting that day, but the previous day's overnight hours may continue.
+Overlapping work intervals remain on until the combined interval ends. Turning off the
+master switch and saving cancels automation without changing the current profile state.
+Saving an enabled schedule also applies the current scheduled state.
+
+The design is inspired by Samsung's simple settings layouts; it does not use proprietary
+Samsung components and is not a claim of One UI 9 compatibility.
 
 Accessibility is an optional, visible fallback, not a requirement for the silent backend.
+If Android shows a confirmation during this fallback, confirm it and close Quick Settings
+yourself; WorkPause does not automatically accept dialogs.
 The app cannot bypass a device or work-profile PIN. Employer policy can restrict its use.
 
 ## Build and test
@@ -105,6 +126,8 @@ managed independently from upstream.
 
 The original WorkPause icon combines a mint briefcase and negative-space pause symbol
 on midnight blue. The editable source is [docs/workpause-icon.svg](docs/workpause-icon.svg).
+
+<img src="docs/screenshots/workpause-main.png" width="300" alt="WorkPause running in the Android 15 emulator">
 
 ## License and attribution
 
