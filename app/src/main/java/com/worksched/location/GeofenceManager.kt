@@ -1,11 +1,13 @@
 package com.worksched.location
 
+// Modified for WorkPause: scoped actions and bounded geofence lifetime.
 import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
 import android.util.Log
+import com.worksched.BuildConfig
 
 /**
  * Event-driven geofence around the saved location, via the platform
@@ -15,7 +17,7 @@ import android.util.Log
  */
 object GeofenceManager {
 
-    const val ACTION_GEOFENCE = "com.worksched.action.GEOFENCE"
+    const val ACTION_GEOFENCE = BuildConfig.APPLICATION_ID + ".action.GEOFENCE"
     private const val TAG = "WorkSchedGeofence"
     private const val REQUEST_CODE = 7000
 
@@ -42,7 +44,11 @@ object GeofenceManager {
         }
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return false
         val duration = (expirationAtMs - System.currentTimeMillis())
-        val expiration = if (duration > 0) duration else -1L // -1 = never expire (safety)
+        if (duration <= 0) {
+            Log.w(TAG, "Not arming an expired arrival window")
+            return false
+        }
+        val expiration = duration
         return try {
             lm.addProximityAlert(lat, lng, radiusMeters.toFloat(), expiration, pendingIntent(ctx))
             Log.i(TAG, "armed proximity alert r=${radiusMeters}m expires in ${expiration / 1000}s")

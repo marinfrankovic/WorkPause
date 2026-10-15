@@ -1,7 +1,10 @@
 package com.worksched.ui
 
+// Modified for WorkPause: shared branding, attribution, and app-specific setup command.
 import android.app.AlarmManager
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -9,6 +12,8 @@ import android.os.PowerManager
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +24,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -32,6 +39,9 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -71,17 +81,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.worksched.R
 import com.worksched.alarm.AlarmScheduler
-import com.worksched.alarm.ResumeRetryScheduler
 import com.worksched.data.Schedule
 import com.worksched.data.ScheduleStore
 import com.worksched.profile.QuietModeBackend
+import com.worksched.profile.ResumeReconcileReceiver
 import com.worksched.profile.WorkProfileDetector
 import com.worksched.profile.WorkProfileToggler
 import com.worksched.service.WorkProfileA11yService
@@ -93,6 +106,24 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.ui.semantics.Role
+import android.text.format.DateFormat
+import android.util.Log
+import java.io.IOException
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import com.worksched.alarm.ResumeRetryScheduler
+import com.worksched.location.GeofenceManager
+import com.worksched.data.DaySchedule
+import com.worksched.data.DayMode
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
@@ -116,7 +147,12 @@ fun MainScreen() {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
 
-    var schedule by remember { mutableStateOf(Schedule.default()) }
+    val scheduleSaver = remember {
+        Saver<Schedule, String>(save = { Json.encodeToString(it) }, restore = { Json.decodeFromString<Schedule>(it) })
+    }
+    var schedule by rememberSaveable(stateSaver = scheduleSaver) { mutableStateOf(Schedule.default()) }
+    var loaded by rememberSaveable { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
     var quiet by remember { mutableStateOf<Boolean?>(null) }   // true = paused, false = on
     var present by remember { mutableStateOf(true) }
     var silent by remember { mutableStateOf(QuietModeBackend.isAvailable(ctx)) }
@@ -124,7 +160,6 @@ fun MainScreen() {
     var canExact by remember { mutableStateOf(canScheduleExact(ctx)) }
     var batteryOk by remember { mutableStateOf(isBatteryUnrestricted(ctx)) }
     var pendingResume by remember { mutableStateOf(false) }
-    var nowTick by remember { mutableStateOf(System.currentTimeMillis()) }
     var toggling by remember { mutableStateOf(false) }
     var savedFlash by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
@@ -149,17 +184,15 @@ fun MainScreen() {
         batteryOk = isBatteryUnrestricted(ctx)
         locationFgOk = LocationGate.hasForegroundLocation(ctx)
         locationBgOk = LocationGate.hasBackgroundLocation(ctx)
-        nowTick = System.currentTimeMillis()
     }
 
     LaunchedEffect(Unit) {
-        schedule = store.scheduleFlow.first()
-        refresh()
-        if (store.pendingResume() && !QuietModeBackend.isDeviceLocked(ctx)) {
-            if (WorkProfileToggler.toggle(ctx, enable = true)) {
-                store.setPendingResume(false, 0L); ResumeRetryScheduler.cancel(ctx)
-            }
+        if (!loaded) {
+            schedule = store.scheduleFlow.first()
+            loaded = true
         }
+        refresh()
+        ResumeReconcileReceiver.reconcile(ctx)
         pendingResume = store.pendingResume()
         while (true) {
             delay(30_000); refresh(); pendingResume = store.pendingResume()
@@ -174,10 +207,11 @@ fun MainScreen() {
         if (toggling) return
         toggling = true
         scope.launch {
-            withContext(Dispatchers.Default) { WorkProfileToggler.toggle(ctx, enable) }
+            val result = withContext(Dispatchers.Default) { WorkProfileToggler.toggle(ctx, enable) }
             refresh()
             snackbar.currentSnackbarData?.dismiss()
             val msg = when {
+                !result -> "Could not change the work profile. Check Settings."
                 enable && silent -> "Resumed"
                 enable -> "Resuming · opening Quick Settings"
                 silent -> "Paused"
@@ -251,77 +285,77 @@ fun MainScreen() {
                 .fillMaxSize()
                 .padding(inner)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             AppHeader(
-                onSetup = { showSetup = true },
-                onHelp = { showHelp = true },
-                onAbout = { showAbout = true }
+                scheduleEnabled = schedule.enabled,
+                canEdit = loaded && !saving,
+                onScheduleChange = { schedule = schedule.copy(enabled = it); savedFlash = false },
+                onSetup = { showSetup = true }
             )
-
-            HeroCard(present = present, quiet = quiet, pendingResume = pendingResume, schedule = schedule, nowTick = nowTick)
-
-            // Manual actions — disabled when not applicable or while toggling
-            val onNow = quiet == false
-            val paused = quiet == true
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(
-                    modifier = Modifier.weight(1f).height(52.dp),
-                    enabled = !toggling && !onNow,
-                    onClick = { doToggle(true) }
-                ) {
-                    Icon(Icons.Filled.PlayArrow, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp)); Text("Resume now")
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f).height(52.dp),
-                    enabled = !toggling && !paused,
-                    onClick = { doToggle(false) }
-                ) {
-                    PauseGlyph(MaterialTheme.colorScheme.primary, Modifier.size(16.dp))
-                    Spacer(Modifier.size(8.dp)); Text("Pause now")
-                }
-            }
 
             ScheduleCard(
                 schedule = schedule,
                 savedFlash = savedFlash,
-                onToggleDay = { day ->
-                    schedule = if (day in schedule.days) schedule.copy(days = schedule.days.filter { it != day })
-                    else schedule.copy(days = schedule.days + day)
-                },
-                onEnableTime = { h, m -> schedule = schedule.copy(enableHour = h, enableMinute = m) },
-                onDisableTime = { h, m -> schedule = schedule.copy(disableHour = h, disableMinute = m) },
-                onToggleLocation = { on -> schedule = schedule.copy(locationEnabled = on) },
-                onSetLocation = { captureMsg = null; showLocationPicker = true },
-                locationReady = locationFgOk && locationBgOk,
+                saving = saving || !loaded,
+                onChange = { schedule = it; savedFlash = false },
                 onSave = {
+                    val toSave = schedule
+                    saving = true
                     scope.launch {
-                        val ordered = Schedule.ORDER.filter { it in schedule.days }
-                        val toSave = schedule.copy(days = ordered)
-                        store.save(toSave); AlarmScheduler.scheduleAll(ctx, toSave)
-                        schedule = toSave; nowTick = System.currentTimeMillis()
-                        savedFlash = true; delay(2000); savedFlash = false
+                        try {
+                            store.save(toSave)
+                            store.setPendingResume(false, 0L)
+                            ResumeRetryScheduler.cancel(ctx)
+                            GeofenceManager.disarm(ctx)
+                            store.setGeofenceArmed(false)
+                            AlarmScheduler.scheduleAll(ctx, toSave)
+                            AlarmScheduler.requestReconcile(ctx)
+                            savedFlash = true
+                        } catch (e: IOException) {
+                            Log.e("WorkPauseUI", "Could not save schedule", e)
+                            snackbar.showSnackbar("Could not save. Please try again.")
+                        } catch (e: SecurityException) {
+                            Log.e("WorkPauseUI", "Android blocked schedule setup", e)
+                            snackbar.showSnackbar("Android blocked the schedule. Review permissions in Settings.")
+                        } finally {
+                            saving = false
+                        }
                     }
                 }
             )
 
-            // Inline action banner — only when something needs setting up
-            if (needsSetup) {
-                SetupBanner(
-                    silent = silent, canExact = canExact, batteryOk = batteryOk, locationNeeded = locationNeedsSetup,
-                    onClick = { showSetup = true }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    when {
+                        !present -> "No work profile found"
+                        pendingResume -> "Waiting for unlock"
+                        quiet == true -> "Work apps are paused"
+                        else -> "Work apps are on"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
                 )
+                if (present) {
+                    TextButton(enabled = !toggling, onClick = { doToggle(quiet == true) }) {
+                        Text(if (quiet == true) "Resume now" else "Pause now")
+                    }
+                }
             }
+            if (needsSetup) TextButton(onClick = { showSetup = true }) { Text("Finish setup in Settings") }
             Spacer(Modifier.height(8.dp))
         }
     }
 
     if (showSetup) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(onDismissRequest = { showSetup = false }, sheetState = sheetState) {
+        ModalBottomSheet(onDismissRequest = { showSetup = false }, sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.background) {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
             SetupSheet(
+                profilePresent = present,
                 silent = silent, a11yOn = a11yOn, canExact = canExact, batteryOk = batteryOk,
                 onOpenA11y = { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
                 onOpenExact = {
@@ -344,6 +378,25 @@ fun MainScreen() {
                     }
                 }
             )
+            if (schedule.locationEnabled) Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    LocationSection(
+                        schedule = schedule,
+                        locationReady = locationFgOk && locationBgOk && LocationGate.locationServicesOn(ctx),
+                        onToggle = { schedule = schedule.copy(locationEnabled = it); savedFlash = false },
+                        onSet = { showSetup = false; showLocationPicker = true; savedFlash = false }
+                    )
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TextButton(onClick = { showSetup = false; showHelp = true }) { Text("How it works") }
+                TextButton(onClick = { showSetup = false; showAbout = true }) { Text("About WorkPause") }
+            }
+            Spacer(Modifier.height(24.dp))
+            }
         }
     }
     if (showLocationPicker) {
@@ -371,62 +424,32 @@ fun MainScreen() {
 // ---------------- Header ----------------
 
 @Composable
-private fun AppHeader(onSetup: () -> Unit, onHelp: () -> Unit, onAbout: () -> Unit) {
-    var menu by remember { mutableStateOf(false) }
+private fun AppHeader(
+    scheduleEnabled: Boolean, canEdit: Boolean,
+    onScheduleChange: (Boolean) -> Unit, onSetup: () -> Unit
+) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp)) {
+        Surface(color = Color(0xFF13243A), shape = RoundedCornerShape(10.dp), modifier = Modifier.size(32.dp)) {
             Box(contentAlignment = Alignment.Center) {
-                ClockGlyph(tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(22.dp))
+                Image(painterResource(R.drawable.ic_launcher_foreground), contentDescription = null, modifier = Modifier.size(32.dp))
             }
         }
         Spacer(Modifier.size(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text("Work Profile Scheduler", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text("AUTO PAUSE / RESUME", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 1.sp)
+        Text(stringResource(R.string.app_name), modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Row(
+            modifier = Modifier.toggleable(
+                value = scheduleEnabled, enabled = canEdit, role = Role.Switch,
+                onValueChange = onScheduleChange
+            ).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Auto", style = MaterialTheme.typography.labelMedium)
+            Switch(checked = scheduleEnabled, enabled = canEdit, onCheckedChange = null)
         }
         Box {
-            IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "More") }
-            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                DropdownMenuItem(text = { Text("Setup & permissions") }, onClick = { menu = false; onSetup() })
-                DropdownMenuItem(text = { Text("How it works") }, onClick = { menu = false; onHelp() })
-                DropdownMenuItem(text = { Text("About") }, onClick = { menu = false; onAbout() })
-            }
-        }
-    }
-}
-
-// ---------------- Hero ----------------
-
-@Composable
-private fun HeroCard(present: Boolean, quiet: Boolean?, pendingResume: Boolean, schedule: Schedule, nowTick: Long) {
-    val sc = MaterialTheme.colorScheme
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = sc.surfaceContainer),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            val paused = quiet == true
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = sc.surfaceContainerHighest, shape = CircleShape, modifier = Modifier.size(46.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        if (paused) MoonGlyph(sc.onSurfaceVariant, sc.surfaceContainerHighest, Modifier.size(23.dp))
-                        else SunGlyph(sc.onSurfaceVariant, Modifier.size(23.dp))
-                    }
-                }
-                Spacer(Modifier.size(14.dp))
-                Column {
-                    val headline = when {
-                        !present -> "No work profile"
-                        quiet == null -> "Work profile"
-                        paused -> "Work apps are paused"
-                        else -> "Work apps are on"
-                    }
-                    Text(headline, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = sc.onSurface)
-                    Spacer(Modifier.height(2.dp))
-                    Text(heroSub(schedule, quiet, pendingResume), style = MaterialTheme.typography.bodyMedium, color = sc.onSurfaceVariant)
-                }
-            }
+            IconButton(onClick = onSetup) { Icon(Icons.Filled.Settings, "Settings") }
         }
     }
 }
@@ -436,75 +459,158 @@ private fun HeroCard(present: Boolean, quiet: Boolean?, pendingResume: Boolean, 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScheduleCard(
-    schedule: Schedule, savedFlash: Boolean,
-    onToggleDay: (Int) -> Unit, onEnableTime: (Int, Int) -> Unit, onDisableTime: (Int, Int) -> Unit,
-    onToggleLocation: (Boolean) -> Unit, onSetLocation: () -> Unit, locationReady: Boolean,
-    onSave: () -> Unit
+    schedule: Schedule, savedFlash: Boolean, saving: Boolean,
+    onChange: (Schedule) -> Unit, onSave: () -> Unit
 ) {
     val sc = MaterialTheme.colorScheme
-    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = sc.surfaceContainerLow)) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("REPEAT ON", style = MaterialTheme.typography.labelMedium, color = sc.onSurfaceVariant, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
-                Text(schedule.daysLabel().replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelLarge, color = sc.onSurface, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Schedule.ORDER.forEach { day ->
-                    val selected = day in schedule.days
+    var selectedDay by rememberSaveable { mutableStateOf(Calendar.MONDAY) }
+    var showCopy by remember { mutableStateOf(false) }
+    var copyTargets by remember { mutableStateOf(emptySet<Int>()) }
+    var editingResume by remember { mutableStateOf<Boolean?>(null) }
+    val day = schedule.forDay(selectedDay)
+    val error = schedule.validationError()
+    val context = LocalContext.current
+    val is24Hour = DateFormat.is24HourFormat(context)
+    val formatTime: (Int) -> String = { minutes ->
+        val clock = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, minutes / 60)
+            set(Calendar.MINUTE, minutes % 60)
+        }
+        DateFormat.getTimeFormat(context).format(clock.time)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = sc.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Schedule.ORDER.forEach { weekday ->
+                    val selected = weekday == selectedDay
                     Surface(
-                        modifier = Modifier.weight(1f).height(46.dp).clip(RoundedCornerShape(12.dp)).clickable { onToggleDay(day) },
-                        color = if (selected) sc.primary else sc.surfaceContainerHighest
+                        onClick = { selectedDay = weekday },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (selected) sc.primary else sc.surface,
+                        contentColor = if (selected) sc.onPrimary else sc.onSurface
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text((Schedule.SHORT[day] ?: "?").take(1), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
-                                color = if (selected) sc.onPrimary else sc.onSurfaceVariant)
+                        Column(verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(requireNotNull(Schedule.SHORT[weekday]), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                            Spacer(Modifier.height(6.dp))
+                            Box(Modifier.size(4.dp).background(
+                                if (selected) sc.onPrimary else when (schedule.forDay(weekday).effectiveMode()) {
+                                    DayMode.SCHEDULE -> Color(0xFF359571)
+                                    DayMode.ALL_ON -> sc.primary
+                                    DayMode.ALL_OFF -> sc.outlineVariant
+                                },
+                                CircleShape))
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(18.dp))
-            Text("HOURS", style = MaterialTheme.typography.labelMedium, color = sc.onSurfaceVariant, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
-            Spacer(Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HourTile(sun = true, label = "RESUME AT", hour = schedule.enableHour, minute = schedule.enableMinute, modifier = Modifier.weight(1f), onChange = onEnableTime)
-                HourTile(sun = false, label = "PAUSE AT", hour = schedule.disableHour, minute = schedule.disableMinute, modifier = Modifier.weight(1f), onChange = onDisableTime)
+            val modes = listOf(DayMode.SCHEDULE to "Schedule", DayMode.ALL_ON to "All day ON", DayMode.ALL_OFF to "All day OFF")
+            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                modes.forEachIndexed { index, (mode, label) ->
+                    SegmentedButton(
+                        selected = day.effectiveMode() == mode,
+                        onClick = { onChange(schedule.withDay(selectedDay, day.copy(enabled = mode != DayMode.ALL_OFF, mode = mode))) },
+                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
+                        enabled = !saving,
+                        icon = {},
+                        modifier = Modifier.weight(1f)
+                    ) { Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1) }
+                }
             }
-            Spacer(Modifier.height(18.dp))
-            LocationSection(schedule = schedule, locationReady = locationReady, onToggle = onToggleLocation, onSet = onSetLocation)
-            Spacer(Modifier.height(16.dp))
+            if (day.effectiveMode() == DayMode.SCHEDULE) {
+                Surface(shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, sc.outlineVariant), color = sc.surface) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        ScheduleTimeRow(true, formatTime(day.resumeMinutes), !saving) { editingResume = true }
+                        HorizontalDivider(color = sc.outlineVariant.copy(alpha = 0.5f))
+                        ScheduleTimeRow(false, formatTime(day.pauseMinutes), !saving) { editingResume = false }
+                    }
+                }
+                if (day.isOvernight()) {
+                    Text("ON overnight until the next day's To time, unless that day is OFF all day.",
+                        style = MaterialTheme.typography.bodySmall, color = sc.onSurfaceVariant)
+                }
+            } else {
+                Text(if (day.effectiveMode() == DayMode.ALL_ON)
+                    "Work profile ON all day, from midnight to midnight."
+                else "Work profile OFF all day, from midnight to midnight.",
+                    style = MaterialTheme.typography.bodyMedium, color = sc.onSurfaceVariant)
+            }
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth().height(48.dp), enabled = !saving,
+                onClick = { copyTargets = emptySet(); showCopy = true }
+            ) { Text("Copy to other days") }
+            if (error != null) Text(error, color = sc.error, style = MaterialTheme.typography.bodySmall)
             Button(
-                modifier = Modifier.fillMaxWidth().height(50.dp), onClick = onSave,
-                colors = if (savedFlash) ButtonDefaults.buttonColors(containerColor = sc.secondaryContainer, contentColor = sc.onSecondaryContainer) else ButtonDefaults.buttonColors()
-            ) { Text(if (savedFlash) "✓  Schedule saved" else "Save schedule") }
+                modifier = Modifier.fillMaxWidth().height(50.dp), onClick = onSave, enabled = !saving && error == null
+            ) { Text(if (saving) "Saving..." else if (savedFlash) "Saved" else "Save") }
+            Text("Changes apply when you tap Save.", style = MaterialTheme.typography.bodySmall, color = sc.onSurfaceVariant)
         }
+    }
+    editingResume?.let { resume ->
+        val minutes = if (resume) day.resumeMinutes else day.pauseMinutes
+        val tps = rememberTimePickerState(initialHour = minutes / 60, initialMinute = minutes % 60, is24Hour = is24Hour)
+        AlertDialog(
+            onDismissRequest = { editingResume = null },
+            confirmButton = { TextButton(onClick = {
+                val selected = tps.hour * 60 + tps.minute
+                onChange(schedule.withDay(selectedDay, if (resume) day.copy(resumeMinutes = selected) else day.copy(pauseMinutes = selected)))
+                editingResume = null
+            }) { Text("Done") } },
+            dismissButton = { TextButton(onClick = { editingResume = null }) { Text("Cancel") } },
+            title = { Text(if (resume) "ON from" else "ON until") },
+            text = { TimePicker(state = tps) }
+        )
+    }
+    if (showCopy) {
+        AlertDialog(
+            onDismissRequest = { showCopy = false },
+            title = { Text("Copy ${Schedule.LONG[selectedDay]}") },
+            text = {
+                Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                    Text("Replace behavior and times on selected days.", style = MaterialTheme.typography.bodySmall)
+                    Schedule.ORDER.filter { it != selectedDay }.forEach { target ->
+                        val checked = target in copyTargets
+                        Row(
+                            modifier = Modifier.fillMaxWidth().toggleable(checked, role = Role.Checkbox) {
+                                copyTargets = if (it) copyTargets + target else copyTargets - target
+                            }.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(checked = checked, onCheckedChange = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(requireNotNull(Schedule.LONG[target]), modifier = Modifier.padding(vertical = 12.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(enabled = copyTargets.isNotEmpty(), onClick = {
+                onChange(schedule.copyDayTo(selectedDay, copyTargets))
+                showCopy = false
+            }) { Text("Copy") } },
+            dismissButton = { TextButton(onClick = { showCopy = false }) { Text("Cancel") } }
+        )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HourTile(sun: Boolean, label: String, hour: Int, minute: Int, modifier: Modifier = Modifier, onChange: (Int, Int) -> Unit) {
+private fun ScheduleTimeRow(resume: Boolean, time: String, enabled: Boolean, onClick: () -> Unit) {
     val sc = MaterialTheme.colorScheme
-    var show by remember { mutableStateOf(false) }
-    Surface(modifier = modifier.clip(RoundedCornerShape(14.dp)).clickable { show = true }, color = sc.surfaceContainerHighest) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (sun) SunGlyph(sc.onSurfaceVariant, Modifier.size(15.dp)) else MoonGlyph(sc.onSurfaceVariant, sc.surfaceContainerHighest, Modifier.size(15.dp))
-                Text(label, style = MaterialTheme.typography.labelMedium, color = sc.onSurfaceVariant, letterSpacing = 0.5.sp)
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(fmt12(hour, minute), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (resume) SunGlyph(sc.onSurface, Modifier.size(22.dp))
+        else MoonGlyph(sc.onSurface, sc.surface, Modifier.size(22.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(if (resume) "From" else "To", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(if (resume) "Work profile turns ON" else "Work profile turns OFF",
+                style = MaterialTheme.typography.bodySmall, color = sc.onSurfaceVariant)
         }
-    }
-    if (show) {
-        val tps = rememberTimePickerState(initialHour = hour, initialMinute = minute, is24Hour = false)
-        AlertDialog(
-            onDismissRequest = { show = false },
-            confirmButton = { TextButton(onClick = { onChange(tps.hour, tps.minute); show = false }) { Text("OK") } },
-            dismissButton = { TextButton(onClick = { show = false }) { Text("Cancel") } },
-            title = { Text(if (label == "RESUME AT") "Resume at" else "Pause at") },
-            text = { Column(horizontalAlignment = Alignment.CenterHorizontally) { TimePicker(state = tps) } }
-        )
+        OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.width(112.dp).height(48.dp)) {
+            Text(time, maxLines = 1, style = MaterialTheme.typography.labelLarge)
+        }
     }
 }
 
@@ -670,94 +776,125 @@ private fun SetupBanner(silent: Boolean, canExact: Boolean, batteryOk: Boolean, 
 
 @Composable
 private fun SetupSheet(
+    profilePresent: Boolean,
     silent: Boolean, a11yOn: Boolean, canExact: Boolean, batteryOk: Boolean,
     onOpenA11y: () -> Unit, onOpenExact: () -> Unit, onAllowBattery: () -> Unit,
     locationEnabled: Boolean, locationFgOk: Boolean, locationBgOk: Boolean, locationServicesOn: Boolean,
     onRequestLocation: () -> Unit, onAllowBackground: () -> Unit, onOpenLocationServices: () -> Unit,
     onRecheck: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
-        Text("Setup & permissions", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(16.dp))
-
+    val ctx = LocalContext.current
+    var showCommand by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    val command = "adb shell pm grant ${com.worksched.BuildConfig.APPLICATION_ID} android.permission.MODIFY_QUIET_MODE"
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Settings", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Set up once. Let your schedule handle the rest.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         SetupItem(
-            title = "Silent mode", ok = silent,
-            okText = "Active — toggles are instant and screen-free.",
-            notText = "Run this once from a PC (survives reboot). No root."
+            title = "Work profile", ok = profilePresent,
+            okText = "An existing work profile was found on this device.",
+            notText = "No work profile found. Set one up before using automation.",
+            stateLabel = if (profilePresent) "Detected" else "Not found"
+        ) {}
+        Text("Scheduling", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 8.dp))
+        SetupItem(
+            title = "Silent control", ok = silent,
+            okText = "Work apps change state without opening Quick Settings.",
+            notText = "Recommended: a one-time ADB grant from your computer. No root needed.",
+            required = !a11yOn,
+            stateLabel = if (silent) "Active" else "Set up"
         ) {
             if (!silent) {
-                Spacer(Modifier.height(8.dp))
-                Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = RoundedCornerShape(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    SelectionContainer {
-                        Text("adb shell pm grant com.worksched android.permission.MODIFY_QUIET_MODE",
-                            fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+                TextButton(onClick = { showCommand = !showCommand }) {
+                    Text(if (showCommand) "Hide instructions" else "Set up with ADB")
+                }
+                if (showCommand) {
+                    Text("1. Connect to a trusted computer and authorize USB debugging.\n2. Run this command from that computer, then tap Refresh status.",
+                        style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(12.dp))
+                    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = RoundedCornerShape(12.dp)) {
+                        Text(command, fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 20.sp,
+                            modifier = Modifier.fillMaxWidth().padding(12.dp))
+                    }
+                    OutlinedButton(onClick = {
+                        ctx.getSystemService(ClipboardManager::class.java)
+                            .setPrimaryClip(ClipData.newPlainText("WorkPause ADB setup", command))
+                        copied = true
+                    }) {
+                        Text(if (copied) "Command copied" else "Copy command")
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                Text("Without it, the app falls back to the visible Quick Settings gesture (needs Accessibility, below).",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-
-        SetupItem(
-            title = "Accessibility service", ok = a11yOn,
-            okText = "Enabled — used as the visible fallback.",
-            notText = "Only needed if you skip silent mode."
-        ) {
-            if (!a11yOn) { Spacer(Modifier.height(8.dp)); OutlinedButton(onClick = onOpenA11y) { Text("Open Accessibility settings") } }
-        }
-
         SetupItem(
             title = "Exact alarms", ok = canExact,
-            okText = "Allowed — schedule fires on time.",
-            notText = "Needed so the schedule fires at the exact minute."
+            okText = "Android allows precise schedule alarms.",
+            notText = "Allow precise alarms. Otherwise changes may be delayed.",
+            stateLabel = if (canExact) "Allowed" else "Allow"
         ) {
-            if (!canExact) { Spacer(Modifier.height(8.dp)); OutlinedButton(onClick = onOpenExact) { Text("Open exact-alarm settings") } }
+            if (!canExact) TextButton(onClick = onOpenExact) { Text("Allow exact alarms") }
         }
-
         SetupItem(
-            title = "Battery optimization", ok = batteryOk,
-            okText = "Exempt — scheduler runs reliably.",
-            notText = "Exempting the app keeps the schedule reliable in deep sleep."
+            title = "Battery", ok = batteryOk, required = false,
+            okText = "Battery optimization is disabled for WorkPause.",
+            notText = "Recommended: allow unrestricted battery use to reduce delays.",
+            stateLabel = if (batteryOk) "Unrestricted" else "Optimized"
         ) {
-            if (!batteryOk) { Spacer(Modifier.height(8.dp)); OutlinedButton(onClick = onAllowBattery) { Text("Allow") } }
+            if (!batteryOk) TextButton(onClick = onAllowBattery) { Text("Review battery settings") }
         }
-
+        Text("Optional", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(top = 8.dp))
         SetupItem(
-            title = "Location access", ok = locationFgOk && locationBgOk,
-            okText = "Granted — arrival resume works in the background.",
-            notText = "Only needed for the optional ‘resume at a place’ gate."
+            title = "Visible fallback", ok = a11yOn, required = false,
+            okText = if (silent) "Enabled, but silent control takes priority." else "Accessibility can operate the Work apps tile.",
+            notText = if (silent) "Not needed while silent control is active." else "Only if you skip ADB. Opens Quick Settings visibly; confirmations stay manual.",
+            stateLabel = if (a11yOn) "Enabled" else if (silent) "Not needed" else "Optional"
         ) {
-            Spacer(Modifier.height(8.dp))
-            when {
-                !locationFgOk -> OutlinedButton(onClick = onRequestLocation) { Text("Grant location") }
-                !locationBgOk -> OutlinedButton(onClick = onAllowBackground) { Text("Allow all the time") }
-                !locationServicesOn -> OutlinedButton(onClick = onOpenLocationServices) { Text("Turn on Location") }
-            }
-            if (locationEnabled && locationFgOk && locationBgOk && !locationServicesOn) {
-                Spacer(Modifier.height(6.dp))
-                Text("Device Location is off — turn it on for arrival resume.",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (!silent) TextButton(onClick = onOpenA11y) { Text("Accessibility settings") }
+        }
+        if (locationEnabled) {
+            SetupItem(
+                title = "Location access", ok = locationFgOk && locationBgOk && locationServicesOn,
+                okText = "Background permission and device location are available.",
+                notText = "Needed only because Resume at a place is enabled.",
+                stateLabel = if (locationFgOk && locationBgOk && locationServicesOn) "Allowed" else "Review"
+            ) {
+                when {
+                    !locationFgOk -> TextButton(onClick = onRequestLocation) { Text("Grant location") }
+                    !locationBgOk -> TextButton(onClick = onAllowBackground) { Text("Allow all the time") }
+                    !locationServicesOn -> TextButton(onClick = onOpenLocationServices) { Text("Turn on Location") }
+                }
             }
         }
-
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onRecheck) { Text("Re-check") }
+        OutlinedButton(onClick = onRecheck, modifier = Modifier.fillMaxWidth()) { Text("Refresh status") }
     }
 }
 
 @Composable
-private fun SetupItem(title: String, ok: Boolean, okText: String, notText: String, extra: @Composable () -> Unit) {
+private fun SetupItem(
+    title: String, ok: Boolean, okText: String, notText: String,
+    required: Boolean = true, stateLabel: String = if (ok) "Ready" else "Needs setup",
+    extra: @Composable () -> Unit
+) {
     val sc = MaterialTheme.colorScheme
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (ok) "✓" else "•", color = if (ok) sc.primary else sc.error, fontWeight = FontWeight.Bold, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.size(8.dp))
-            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+    val statusColor = if (ok) sc.primary else if (required) sc.error else sc.onSurfaceVariant
+    Surface(color = sc.surface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(if (ok) Icons.Filled.CheckCircle else Icons.Filled.Info, contentDescription = null,
+                    tint = statusColor, modifier = Modifier.size(20.dp))
+                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f))
+                Text(stateLabel, style = MaterialTheme.typography.labelSmall, color = statusColor)
+            }
+            Text(if (ok) okText else notText, style = MaterialTheme.typography.bodySmall, color = sc.onSurfaceVariant)
+            extra()
         }
-        Spacer(Modifier.height(2.dp))
-        Text(if (ok) okText else notText, style = MaterialTheme.typography.bodySmall, color = sc.onSurfaceVariant, modifier = Modifier.padding(start = 26.dp))
-        Box(modifier = Modifier.padding(start = 26.dp)) { extra() }
     }
 }
 
@@ -769,11 +906,11 @@ private fun HelpDialog(onDismiss: () -> Unit) {
         title = { Text("How it works") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                HelpPara("Schedule", "Pick the days and the resume/pause times. The app arms exact alarms that survive reboot — no app needs to stay running.")
+                HelpPara("Daily behavior", "Select a weekday and choose Schedule, All day ON, or All day OFF. Schedule keeps work apps ON from the From time until the To time; an earlier To time means the next day. All day OFF takes priority at midnight over previous overnight hours.")
+                HelpPara("Copy and save", "Copy to other days replaces the selected days' behavior and times. Tap Save to apply every change. Turning off Auto and saving cancels automation without changing the current profile state.")
                 HelpPara("Silent mode", "After a one-time ADB grant (MODIFY_QUIET_MODE), the app pauses/resumes your work profile via a direct system call — instant, no screen, no Quick Settings panel. No root.")
                 HelpPara("Visible fallback", "Without the grant, it taps the Quick Settings ‘Work apps’ tile via an Accessibility service, which briefly shows the panel.")
-                HelpPara("Resume while locked", "Resuming needs the profile unlocked, so if a resume is scheduled while the phone is locked it defers and completes silently the moment you next unlock — no extra passcode.")
-                HelpPara("Resume at a place", "Optional: turn on work apps only when you reach a chosen place. The system watches for your arrival (an event-driven geofence — not constant tracking), so it's light on battery. The spot is shown as an address looked up via the device's geocoder (uses the network). Needs ‘Allow all the time’ location and the silent backend; the scheduled pause is never affected.")
+                HelpPara("Resume while locked", "Android may require the device or work profile to be unlocked. WorkPause retries within the active work hours; it cannot bypass a PIN or employer policy.")
 }
         }
     )
@@ -793,12 +930,15 @@ private fun AboutDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-        title = { Text("Work Profile Scheduler") },
+        title = { Text(stringResource(R.string.app_name)) },
         text = {
             Column {
                 Text("Version ${com.worksched.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
                 Text("Pauses and resumes your Android work profile on a schedule — optionally only when you reach a chosen place. No root. Open source on GitHub, Apache-2.0.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(8.dp))
+                Text("Based on Work Profile Scheduler. Copyright 2026 Ravindra. Licensed under Apache License 2.0.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -859,7 +999,10 @@ private fun isA11yEnabled(ctx: Context): Boolean {
     val am = ctx.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
     val target = WorkProfileA11yService::class.java.name
     return am.getEnabledAccessibilityServiceList(android.accessibilityservice.AccessibilityServiceInfo.FEEDBACK_GENERIC)
-        .any { it.id.endsWith(target) || it.resolveInfo?.serviceInfo?.name == target }
+        .any {
+            val service = it.resolveInfo?.serviceInfo
+            service?.packageName == ctx.packageName && service.name == target
+        }
 }
 
 private fun canScheduleExact(ctx: Context): Boolean {
@@ -906,16 +1049,6 @@ private fun MoonGlyph(tint: Color, carveColor: Color, modifier: Modifier = Modif
         val r = size.minDimension * 0.42f; val c = Offset(size.width / 2, size.height / 2)
         drawCircle(tint, radius = r, center = c)
         drawCircle(carveColor, radius = r * 0.92f, center = Offset(c.x + r * 0.55f, c.y - r * 0.30f))
-    }
-}
-
-@Composable
-private fun ClockGlyph(tint: Color, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val c = Offset(size.width / 2, size.height / 2); val r = size.minDimension * 0.42f; val sw = size.minDimension * 0.09f
-        drawCircle(tint, radius = r, center = c, style = Stroke(width = sw))
-        drawLine(tint, c, Offset(c.x, c.y - r * 0.55f), strokeWidth = sw, cap = StrokeCap.Round)
-        drawLine(tint, c, Offset(c.x + r * 0.45f, c.y), strokeWidth = sw, cap = StrokeCap.Round)
     }
 }
 

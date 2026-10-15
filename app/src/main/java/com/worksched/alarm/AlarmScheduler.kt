@@ -1,12 +1,15 @@
 package com.worksched.alarm
 
+// Modified for WorkPause: scope internal actions to this application.
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.worksched.BuildConfig
 import com.worksched.data.Schedule
 import com.worksched.data.ScheduleStore
+import com.worksched.data.DayMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -15,7 +18,7 @@ import java.util.Calendar
 
 object AlarmScheduler {
 
-    const val ACTION_TOGGLE = "com.worksched.action.TOGGLE"
+    const val ACTION_TOGGLE = BuildConfig.APPLICATION_ID + ".action.TOGGLE"
     const val EXTRA_ENABLE = "enable"
     const val EXTRA_DAY = "day"
 
@@ -29,6 +32,7 @@ object AlarmScheduler {
             val store = ScheduleStore(context.applicationContext)
             val schedule = store.scheduleFlow.first()
             scheduleAll(context.applicationContext, schedule)
+            requestReconcile(context.applicationContext)
         }
     }
 
@@ -38,16 +42,33 @@ object AlarmScheduler {
      */
     fun scheduleAll(context: Context, schedule: Schedule) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val selected = schedule.days.toSet()
         ALL_DAYS.forEach { day ->
-            if (day in selected) {
-                scheduleSlot(context, am, day, enable = true, schedule.enableMinutesOfDay())
-                scheduleSlot(context, am, day, enable = false, schedule.disableMinutesOfDay())
-            } else {
+            val hours = schedule.forDay(day)
+            if (!schedule.enabled) {
                 am.cancel(pendingIntent(context, day, enable = true))
                 am.cancel(pendingIntent(context, day, enable = false))
+            } else {
+                when (hours.effectiveMode()) {
+                    DayMode.SCHEDULE -> {
+                        scheduleSlot(context, am, day, enable = true, hours.resumeMinutes)
+                        val pauseDay = if (hours.isOvernight()) day % 7 + 1 else day
+                        scheduleSlot(context, am, day, enable = false, hours.pauseMinutes, pauseDay)
+                    }
+                    DayMode.ALL_ON -> {
+                        scheduleSlot(context, am, day, enable = true, 0)
+                        scheduleSlot(context, am, day, enable = false, 0, day % 7 + 1)
+                    }
+                    DayMode.ALL_OFF -> {
+                        am.cancel(pendingIntent(context, day, enable = true))
+                        scheduleSlot(context, am, day, enable = false, 0)
+                    }
+                }
             }
         }
+    }
+
+    fun requestReconcile(context: Context) {
+        context.sendBroadcast(Intent(context, ToggleReceiver::class.java).setAction(ACTION_TOGGLE))
     }
 
     fun cancelAll(context: Context) {
@@ -70,9 +91,9 @@ object AlarmScheduler {
         return PendingIntent.getBroadcast(context, rc, intent, flags)
     }
 
-    private fun scheduleSlot(context: Context, am: AlarmManager, day: Int, enable: Boolean, minutes: Int) {
+    private fun scheduleSlot(context: Context, am: AlarmManager, day: Int, enable: Boolean, minutes: Int, eventDay: Int = day) {
         val pi = pendingIntent(context, day, enable)
-        val triggerMs = nextOccurrenceMillis(day, minutes)
+        val triggerMs = nextOccurrenceMillis(eventDay, minutes)
         val canExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) am.canScheduleExactAlarms() else true
         if (canExact) {
             am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi)

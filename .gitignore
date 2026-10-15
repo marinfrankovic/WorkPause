@@ -1,3 +1,4 @@
+# Modified for WorkPause: exclude private signing material.
 # Build output
 .gradle/
 build/
@@ -18,3 +19,11 @@ emulator.log
 
 # Compiled APKs — distributed via GitHub Releases, not committed
 *.apk
+
+# Private signing keys and locally encrypted credentials
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.dpapi
+keystore.properties

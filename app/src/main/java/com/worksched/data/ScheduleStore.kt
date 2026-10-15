@@ -1,6 +1,8 @@
 package com.worksched.data
 
+// Modified for WorkPause: validate daily schedules and disable automation on corrupt data.
 import android.content.Context
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -24,11 +26,20 @@ class ScheduleStore(private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
 
     val scheduleFlow: Flow<Schedule> = context.dataStore.data.map { prefs ->
-        prefs[scheduleKey]?.let { runCatching { json.decodeFromString<Schedule>(it) }.getOrNull() }
-            ?: Schedule.default()
+        prefs[scheduleKey]?.let { raw ->
+            try {
+                json.decodeFromString<Schedule>(raw).also {
+                    require(it.validationError() == null) { requireNotNull(it.validationError()) }
+                }
+            } catch (e: IllegalArgumentException) {
+                Log.e("WorkPauseStore", "Invalid saved schedule; automation disabled", e)
+                Schedule.default().copy(enabled = false)
+            }
+        } ?: Schedule.default()
     }
 
     suspend fun save(schedule: Schedule) {
+        require(schedule.validationError() == null) { requireNotNull(schedule.validationError()) }
         context.dataStore.edit { it[scheduleKey] = json.encodeToString(schedule) }
     }
 

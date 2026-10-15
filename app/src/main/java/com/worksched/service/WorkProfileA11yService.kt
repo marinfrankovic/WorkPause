@@ -1,5 +1,6 @@
 package com.worksched.service
 
+// Modified for WorkPause: limit gestures to System UI and leave confirmations to the user.
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Context
@@ -49,7 +50,7 @@ class WorkProfileA11yService : AccessibilityService() {
 
     private fun attemptTileClick(desired: Boolean, attempt: Int, reExpanded: Boolean) {
         val root = rootInActiveWindow
-        val tile = root?.let { findWorkTile(it) }
+        val tile = root?.takeIf { it.packageName?.toString() == SYSTEM_UI_PACKAGE }?.let { findWorkTile(it) }
         if (tile == null) {
             val rootPkg = root?.packageName?.toString() ?: "null"
             Log.d(TAG, "tile not yet found, retry #$attempt (rootPkg=$rootPkg)")
@@ -71,11 +72,10 @@ class WorkProfileA11yService : AccessibilityService() {
             val ok = tile.performAction(AccessibilityNodeInfo.ACTION_CLICK)
             Log.i(TAG, "tile click result=$ok")
             if (!ok) tapTileViaGesture(tile)
-            main.postDelayed({ confirmIfPrompted() }, 700)
         } else {
             Log.i(TAG, "tile already in desired state; no click needed")
+            main.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 1400)
         }
-        main.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 1400)
     }
 
     private fun tapTileViaGesture(tile: AccessibilityNodeInfo) {
@@ -98,13 +98,6 @@ class WorkProfileA11yService : AccessibilityService() {
         Log.i(TAG, "dispatchGesture queued=$dispatched")
     }
 
-    private fun confirmIfPrompted() {
-        val root = rootInActiveWindow ?: return
-        val accept = findButtonByText(root, CONFIRM_BUTTON_LABELS) ?: return
-        Log.i(TAG, "confirmation dialog detected; clicking '${accept.text}'")
-        accept.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-    }
-
     private fun findWorkTile(root: AccessibilityNodeInfo): AccessibilityNodeInfo? =
         findFirst(root) { n ->
             val desc = (n.contentDescription?.toString() ?: "").trim()
@@ -112,12 +105,6 @@ class WorkProfileA11yService : AccessibilityService() {
             desc.isNotBlank() &&
                 TILE_LABELS.any { it.equals(desc, ignoreCase = true) } &&
                 cls.endsWith("Button") && n.isCheckable && n.isClickable
-        }
-
-    private fun findButtonByText(root: AccessibilityNodeInfo, needles: List<String>): AccessibilityNodeInfo? =
-        findFirst(root) { n ->
-            val t = (n.text?.toString() ?: "").trim()
-            n.isClickable && needles.any { it.equals(t, ignoreCase = true) }
         }
 
     private fun findFirst(
@@ -135,16 +122,13 @@ class WorkProfileA11yService : AccessibilityService() {
 
     companion object {
         private const val TAG = "WorkProfileA11y"
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
 
         @Volatile var instance: WorkProfileA11yService? = null
 
         private val TILE_LABELS = listOf(
             "Work apps", "Pause apps", "Pause work apps", "Work profile", "Work mode"
         )
-        private val CONFIRM_BUTTON_LABELS = listOf(
-            "Pause", "Resume", "OK", "Turn off", "Turn on", "Continue"
-        )
-
         fun requestToggle(@Suppress("UNUSED_PARAMETER") context: Context, enable: Boolean): Boolean {
             val svc = instance
             if (svc == null) {

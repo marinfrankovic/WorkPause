@@ -1,5 +1,6 @@
 package com.worksched.location
 
+// Modified for WorkPause: reject stale/inaccurate fixes and validate overnight work windows.
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
@@ -9,6 +10,8 @@ import android.location.Geocoder
 import android.location.Location
 import android.location.LocationManager
 import android.os.Build
+import android.os.SystemClock
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.core.os.CancellationSignal
@@ -26,6 +29,8 @@ import kotlin.coroutines.resume
  * is no polling.
  */
 object LocationGate {
+    private const val TAG = "WorkPauseLocation"
+    internal const val MAX_FIX_AGE_NANOS = 120_000_000_000L
 
     // ---- permission / availability ----
 
@@ -53,7 +58,20 @@ object LocationGate {
         val lng = s.longitude ?: return false
         val r = FloatArray(1)
         Location.distanceBetween(loc.latitude, loc.longitude, lat, lng, r)
-        return r[0] <= s.radiusMeters.toFloat()
+        return isFreshFix(loc) && loc.accuracy <= s.radiusMeters &&
+            r[0] + loc.accuracy <= s.radiusMeters.toFloat()
+    }
+
+    internal fun isUsableFix(ageNanos: Long, accuracyMeters: Float): Boolean =
+        ageNanos in 0..MAX_FIX_AGE_NANOS && accuracyMeters.isFinite() && accuracyMeters > 0
+
+    private fun isFreshFix(loc: Location): Boolean =
+        loc.hasAccuracy() && isUsableFix(SystemClock.elapsedRealtimeNanos() - loc.elapsedRealtimeNanos, loc.accuracy)
+
+    suspend fun canResumeNow(ctx: Context, schedule: Schedule): Boolean {
+        if (!schedule.hasValidLocation() || !inResumeWindowNow(schedule)) return false
+        val loc = currentLocation(ctx) ?: return false
+        return isInside(schedule, loc)
     }
 
     // ---- one-shot best-effort current fix ----
@@ -64,7 +82,10 @@ object LocationGate {
      */
     @SuppressLint("MissingPermission")
     suspend fun currentLocation(ctx: Context, timeoutMs: Long = 8_000L): Location? {
-        if (!hasForegroundLocation(ctx)) return null
+        if (!hasForegroundLocation(ctx) || !locationServicesOn(ctx)) {
+            Log.w(TAG, "Location unavailable: permission missing or device location disabled")
+            return null
+        }
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
         val provider = pickProvider(lm)
         val active: Location? = if (provider != null) {
@@ -77,12 +98,15 @@ object LocationGate {
                             lm, provider, signal, ContextCompat.getMainExecutor(ctx)
                         ) { loc -> if (cont.isActive) cont.resume(loc) }
                     } catch (e: SecurityException) {
+                        Log.w(TAG, "Location request denied", e)
                         if (cont.isActive) cont.resume(null)
                     }
                 }
             }
         } else null
-        return active ?: lastKnown(lm)
+        val fix = active?.takeIf(::isFreshFix) ?: lastKnown(lm)
+        if (fix == null) Log.w(TAG, "No fresh location fix with valid accuracy")
+        return fix
     }
 
     @SuppressLint("MissingPermission")
@@ -92,10 +116,16 @@ object LocationGate {
             LocationManager.NETWORK_PROVIDER,
             LocationManager.PASSIVE_PROVIDER
         )
+        val available = lm.allProviders.toSet()
         var best: Location? = null
-        for (p in provs) {
-            val l = try { lm.getLastKnownLocation(p) } catch (e: SecurityException) { null }
-            if (l != null && (best == null || l.time > best.time)) best = l
+        for (p in provs.filter { it in available }) {
+            val l = try {
+                lm.getLastKnownLocation(p)
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Cached location access denied for $p", e)
+                null
+            }
+            if (l != null && isFreshFix(l) && (best == null || l.elapsedRealtimeNanos > best.elapsedRealtimeNanos)) best = l
         }
         return best
     }
@@ -113,14 +143,9 @@ object LocationGate {
     // ---- daily resume window (resume time .. pause time on a selected day) ----
 
     /** True if right now is a selected day and the clock is inside the on-window. */
-    fun inResumeWindowNow(s: Schedule): Boolean {
+    fun inResumeWindowNow(s: Schedule, now: Calendar = Calendar.getInstance()): Boolean {
         if (!s.hasValidLocation()) return false
-        val now = Calendar.getInstance()
-        if (now.get(Calendar.DAY_OF_WEEK) !in s.days) return false
-        val mins = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-        val start = s.enableMinutesOfDay()
-        val end = s.disableMinutesOfDay()
-        return if (start <= end) mins in start until end else (mins >= start || mins < end)
+        return s.isActiveAt(now.timeInMillis, now.timeZone.toZoneId())
     }
 
     /**
@@ -128,14 +153,9 @@ object LocationGate {
      * automatically (bounded battery). Handles an overnight window by rolling to tomorrow.
      */
     fun resumeWindowEndMillis(s: Schedule): Long {
-        val c = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, s.disableHour)
-            set(Calendar.MINUTE, s.disableMinute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
+        return s.activeWindowEndMillis() ?: System.currentTimeMillis().also {
+            Log.w(TAG, "No active resume window; arrival watch will not be armed")
         }
-        if (s.disableMinutesOfDay() <= s.enableMinutesOfDay()) c.add(Calendar.DAY_OF_YEAR, 1)
-        return c.timeInMillis
     }
 
     // ---- reverse geocode: coordinates -> readable address (system Geocoder, needs INTERNET) ----

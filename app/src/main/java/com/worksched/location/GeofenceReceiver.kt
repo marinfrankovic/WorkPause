@@ -1,5 +1,6 @@
 package com.worksched.location
 
+// Modified for WorkPause: verify a fresh arrival fix and bound deferred resumes.
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -46,6 +47,12 @@ class GeofenceReceiver : BroadcastReceiver() {
                     return@launch
                 }
 
+                if (!LocationGate.canResumeNow(appCtx, schedule)) {
+                    Log.w(TAG, "Arrival could not be verified with a fresh, accurate location")
+                    notify(appCtx, "Location could not be verified. Work apps remain paused.")
+                    return@launch
+                }
+
                 // Arrival happened — the geofence has done its job. Disarm regardless of outcome.
                 store.setGeofenceArmed(false)
                 GeofenceManager.disarm(appCtx)
@@ -58,7 +65,7 @@ class GeofenceReceiver : BroadcastReceiver() {
                     Log.i(TAG, "arrival resume succeeded")
                 } else {
                     // Locked on arrival → defer to next unlock via the existing retry backbone.
-                    val deadline = System.currentTimeMillis() + DEFER_WINDOW_MS
+                    val deadline = minOf(System.currentTimeMillis() + DEFER_WINDOW_MS, LocationGate.resumeWindowEndMillis(schedule))
                     store.setPendingResume(true, deadline)
                     ResumeRetryScheduler.schedule(appCtx, attempt = 0)
                     notify(appCtx, "Work apps will resume when you next unlock the phone.")

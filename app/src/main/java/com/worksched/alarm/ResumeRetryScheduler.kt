@@ -1,10 +1,12 @@
 package com.worksched.alarm
 
+// Modified for WorkPause: scope retry actions to this application.
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.worksched.BuildConfig
 import com.worksched.profile.ResumeReconcileReceiver
 
 /**
@@ -22,7 +24,7 @@ import com.worksched.profile.ResumeReconcileReceiver
 object ResumeRetryScheduler {
 
     private const val TAG = "ResumeRetry"
-    const val ACTION_RESUME_RETRY = "com.worksched.action.RESUME_RETRY"
+    const val ACTION_RESUME_RETRY = BuildConfig.APPLICATION_ID + ".action.RESUME_RETRY"
     private const val REQUEST_CODE = 7777
 
     // Backoff steps in milliseconds, then steady 10-minute cadence.

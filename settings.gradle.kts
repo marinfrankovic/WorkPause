@@ -1,3 +1,4 @@
+// Modified for WorkPause: independent project name.
 pluginManagement {
     repositories {
         google {
@@ -19,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "WorkSched"
+rootProject.name = "WorkPause"
 include(":app")

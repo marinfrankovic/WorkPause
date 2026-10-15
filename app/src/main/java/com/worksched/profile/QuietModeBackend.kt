@@ -1,5 +1,6 @@
 package com.worksched.profile
 
+// Modified for WorkPause: setup identity and SDK-defined quiet-mode flag.
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -10,7 +11,7 @@ import android.util.Log
 /**
  * Silent backend. Requires the MODIFY_QUIET_MODE permission, granted once via:
  *
- *   adb shell pm grant com.worksched android.permission.MODIFY_QUIET_MODE
+ *   adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE
  *
  * The permission's protectionLevel is `signature|privileged|development|role`;
  * the `development` flag is what makes `pm grant` work for a normal app (same
@@ -29,9 +30,6 @@ import android.util.Log
 object QuietModeBackend {
     private const val TAG = "QuietModeBackend"
     const val PERMISSION = "android.permission.MODIFY_QUIET_MODE"
-
-    // Value of UserManager.QUIET_MODE_DISABLE_ONLY_IF_CREDENTIAL_NOT_REQUIRED (API 30+).
-    private const val FLAG_DISABLE_ONLY_IF_CRED_NOT_REQUIRED = 1
 
     fun isAvailable(context: Context): Boolean =
         context.checkSelfPermission(PERMISSION) == PackageManager.PERMISSION_GRANTED
@@ -67,7 +65,7 @@ object QuietModeBackend {
                 //    queuing a PIN prompt; the caller defers and retries on unlock.
                 val locked = isDeviceLocked(context)
                 val ok = if (locked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    um.requestQuietModeEnabled(false, workUser, FLAG_DISABLE_ONLY_IF_CRED_NOT_REQUIRED)
+                    um.requestQuietModeEnabled(false, workUser, UserManager.QUIET_MODE_DISABLE_ONLY_IF_CREDENTIAL_NOT_REQUIRED)
                 } else {
                     um.requestQuietModeEnabled(false, workUser)
                 }

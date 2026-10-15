@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Modified for WorkPause: round icon and application-scoped actions. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -20,7 +21,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- Silent backend: granted once via
-         `adb shell pm grant com.worksched android.permission.MODIFY_QUIET_MODE`.
+         `adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE`.
          protectionLevel is signature|privileged|development|role, so the
          `development` flag makes it pm-grantable to a normal app (same mechanism
          as WRITE_SECURE_SETTINGS). Stays ungranted until the adb command runs;
@@ -34,6 +35,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.WorkSched"
@@ -64,7 +66,7 @@
             android:name=".alarm.ToggleReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.worksched.action.TOGGLE" />
+                <action android:name="${applicationId}.action.TOGGLE" />
             </intent-filter>
         </receiver>
 
@@ -82,10 +84,10 @@
 
         <receiver
             android:name=".profile.ResumeReconcileReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.USER_PRESENT" />
-                <action android:name="com.worksched.action.RESUME_RETRY" />
+                <action android:name="${applicationId}.action.RESUME_RETRY" />
             </intent-filter>
         </receiver>
 
@@ -93,7 +95,7 @@
             android:name=".location.GeofenceReceiver"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.worksched.action.GEOFENCE" />
+                <action android:name="${applicationId}.action.GEOFENCE" />
             </intent-filter>
         </receiver>
 

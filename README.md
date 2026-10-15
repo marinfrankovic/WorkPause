@@ -11,21 +11,41 @@
 
 **Work on your schedule.**
 
-WorkPause pauses and resumes an existing Android work profile on selected weekdays,
-with optional location-based resuming. It uses Android alarms rather than a continuous
-scheduler service.
+WorkPause pauses and resumes an existing Android work profile on selected weekdays.
+It uses Android alarms rather than a continuous scheduler service.
 
 ## Features
 
-- Independent Turn ON (resume) and Turn OFF (pause) times for every weekday.
-- Copy one day's hours and enabled status to any other days.
-- Overnight hours, a master automation switch, and an explicit Save button.
-- Simple One UI-inspired layout, with setup and optional location controls in Settings.
+- Three choices for every weekday: **Schedule**, **All day ON**, or **All day OFF**.
+- **From → To** times define the hours when your work profile is ON.
+- Copy one day's behavior and remembered hours to any other days.
+- Overnight hours and an explicit Save button for all changes.
+- Compact single-row header with an **Auto** switch and Settings gear.
 - Manual resume/pause control.
 - Silent control after a one-time ADB permission grant.
-- Optional resume-at-a-place location check.
 - Deferred resume when Android requires the device or work profile to be unlocked.
 - Material 3 interface and adaptive, round, and themed launcher icons.
+
+## Using the scheduler
+
+The compact top bar contains the app name, **Auto** switch, and Settings gear.
+There is no separate weekly-schedule heading or repeated selected-day title.
+Choose a day directly from the Monday-Sunday strip, then choose its behavior:
+
+| Mode | Work profile behavior |
+|---|---|
+| Schedule | ON between **From** and **To**, OFF outside active scheduled hours. |
+| All day ON | ON from local midnight to midnight. |
+| All day OFF | OFF from local midnight to midnight, including any previous overnight hours. |
+
+The two all-day modes use matching descriptions and hide the time fields.
+Switching modes keeps the day's remembered From/To times. **Copy to other days**
+copies both the mode and those times to the days you select.
+Day selection alone does not save: tap **Save** to apply all edits, including **Auto**.
+With Auto off, saved schedules remain available but do not change the profile automatically.
+**Resume now** / **Pause now** is available when an existing work profile is detected.
+
+<img src="docs/screenshots/workpause-main.png" width="320" alt="WorkPause compact header and per-day scheduler in the Android emulator">
 
 ## App identity
 
@@ -35,28 +55,107 @@ scheduler service.
 
 WorkPause installs separately from the original application. Settings and permission
 grants do not migrate automatically.
+The fork retains upstream Git history, so old commit messages and tags may still
+mention Work Profile Scheduler v1.4.0 or v1.7.0. These are historical upstream versions,
+not the version of the WorkPause APK. Use this repository's **WorkPause 1.0.0 Preview**
+release, not an inherited upstream tag.
 
 ## Requirements and setup
 
 Android 10 or newer and an existing Android work profile are required. Samsung Secure
 Folder is not a substitute for a work profile.
 
-1. Install a WorkPause APK on the personal side of the device.
-2. For silent control, grant the permission from an authorized ADB host:
+### Install with ADB
+
+1. Download the signed `WorkPause-1.0.0.apk` from this repository's
+   [Releases](https://github.com/marinfrankovic/WorkPause/releases) page.
+   Preview versions may be marked **Pre-release**. Do not install APKs from untrusted mirrors.
+2. Install Google's [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)
+   on your computer. Open a terminal in the folder containing `adb`, or add it to `PATH`.
+3. On the phone, enable **Developer options** and **USB debugging**, connect by USB,
+   and approve the debugging prompt for your trusted computer.
+4. Check the connection, then install on the personal side of the phone:
+
+   ```powershell
+   adb devices
+   adb install -r "C:\path\to\WorkPause-1.0.0.apk"
+   ```
+
+   Replace the example path with your downloaded APK. The device should appear as
+   `device`, not `unauthorized`. If multiple devices are connected, use
+   `adb -s DEVICE_SERIAL install -r "C:\path\to\WorkPause-1.0.0.apk"`.
+   In PowerShell, use `.\adb.exe` instead of `adb` if running from the Platform Tools
+   folder without adding it to `PATH`.
+5. Open WorkPause from the launcher.
+
+To check the installed version:
+
+```powershell
+adb shell dumpsys package io.github.marinfrankovic.workpause | Select-String "versionCode=|versionName="
+```
+
+Expect `versionName=1.0.0` and `versionCode=1`. On the phone, you can also check
+**Settings → Apps → WorkPause → App info** (the exact layout varies by device).
+
+The `-r` option updates an existing installation without clearing its data, provided
+the application ID and signing certificate match. A debug APK or the original upstream
+app is not a compatible signed update. Do not uninstall to resolve a signature mismatch
+unless you accept losing that installation's settings and permission grants.
+
+### Install without ADB or a computer
+
+1. On the phone, open the [Releases](https://github.com/marinfrankovic/WorkPause/releases)
+   page and download the signed WorkPause APK using your browser.
+2. Open the download. If Android blocks installation, follow the prompt to allow
+   **Install unknown apps** / **Allow from this source** for the browser or file manager
+   you are using. Settings names vary by phone.
+3. Return to the APK, tap **Install**, and open WorkPause. Install it on the personal
+   side, not inside the managed work profile.
+4. After installing, turn off that browser/file manager's permission to install unknown apps.
+
+No root, USB debugging, or ADB is required just to install the APK. Android device
+protection and employer policy may prevent sideloading; WorkPause cannot bypass them.
+
+**Installing without ADB does not grant silent control.** To use the app without
+the ADB grant, open WorkPause **Settings → Visible fallback → Accessibility settings**
+and enable its accessibility service. This visibly operates Quick Settings rather than
+silently switching the profile. On Android versions that restrict accessibility for
+sideloaded apps, **Settings → Apps → WorkPause → menu → Allow restricted settings**
+may be needed, if the device permits it. Only enable this for an APK you trust.
+Some confirmation dialogs still require your input; device and employer restrictions
+still apply.
+
+### Configure profile control and scheduling
+
+1. For recommended silent control, run this once from an authorized ADB host, even
+   if you originally installed the APK directly on the phone:
 
    ```text
    adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE
    ```
 
-3. Open **Settings** using the gear and review setup, exact alarms, and battery restrictions.
-4. Select a weekday, enable **Use day**, and choose its **Turn ON** and **Turn OFF** times.
+   For a multi-device connection, add `-s DEVICE_SERIAL` after `adb`.
+   This is a separate setup step from installation. It normally survives reboot;
+   uninstalling or reinstalling from scratch requires granting it again.
+2. Open **Settings** using the gear. Status cards explain what needs attention.
+   Expand **Set up with ADB** for instructions and a **Copy command** button.
+3. Select a weekday and choose **All day OFF**, **All day ON**, or **Schedule**.
+   For Schedule, set **From** and **To** to define the ON interval.
    Repeat for other days or use **Copy to other days**, then tap **Save**.
-5. Optional location controls stay under Settings; grant background location only if using them.
+4. In Settings, allow **Exact alarms** for precise timing. Unrestricted battery use is
+   recommended to reduce delays; these permissions do not grant profile control.
+   Turn **Auto** on and tap **Save** when you are ready to enable automation.
 
-An OFF time earlier than ON ends the work interval the next day. Disabling a weekday
-prevents new hours starting that day, but the previous day's overnight hours may continue.
-Overlapping work intervals remain on until the combined interval ends. Turning off the
-master switch and saving cancels automation without changing the current profile state.
+Location setup is hidden for now to keep the interface focused on scheduling.
+If a saved configuration already has location gating enabled, its controls remain
+in Settings so you can turn it off; tap Save on the main screen to apply that change.
+
+An earlier To time ends the work interval the next day. **All day OFF takes priority
+at midnight**, including over the previous day's overnight interval. All day ON spans
+local midnight to midnight, including clock-change days. Overlapping ON intervals
+remain on until the combined interval ends. Previously disabled weekdays map to
+All day OFF; review overnight schedules after updating. Turning off the
+**Auto** switch and saving cancels automation without changing the current profile state.
 Saving an enabled schedule also applies the current scheduled state.
 
 The design is inspired by Samsung's simple settings layouts; it does not use proprietary
@@ -76,6 +175,9 @@ On Windows:
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 adb -s emulator-5556 install -r .\app\build\outputs\apk\debug\app-debug.apk
 ```
+
+Replace `emulator-5556` with your device serial. This debug-install command is only
+for a device without the differently signed release app installed.
 
 The debug APK is for development only. Debug and release builds share the application
 ID but use different signing keys; Android will not install one over the other.
@@ -112,6 +214,9 @@ managed independently from upstream.
 ## Status and limitations
 
 - Emulator installation and appearance do not establish Samsung or enterprise compatibility.
+- The current preview passed 29 unit tests, Android debug lint, release-signature checks,
+  and emulator UI smoke checks. The emulator has no managed work profile, so this does
+  not verify real profile toggling.
 - Location gating is a convenience, not a security enforcement boundary.
 - The inherited external testing hook has been removed. Internal retry broadcasts are
   non-exported, accessibility is restricted to System UI, and generic confirmation
@@ -126,8 +231,6 @@ managed independently from upstream.
 
 The original WorkPause icon combines a mint briefcase and negative-space pause symbol
 on midnight blue. The editable source is [docs/workpause-icon.svg](docs/workpause-icon.svg).
-
-<img src="docs/screenshots/workpause-main.png" width="300" alt="WorkPause running in the Android 15 emulator">
 
 ## License and attribution
 

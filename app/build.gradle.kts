@@ -1,3 +1,4 @@
+// Modified for WorkPause: independent identity and explicit private release signing.
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -10,11 +11,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.worksched"
+        applicationId = "io.github.marinfrankovic.workpause"
         minSdk = 29
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.7.0"
+        versionCode = 1
+        versionName = "1.0.0"
     }
 
     buildFeatures {
@@ -32,14 +33,12 @@ android {
     }
 
     signingConfigs {
-        // Sign the release build with the standard Android debug key so the minified APK
-        // installs as an in-place update (same certificate as every prior build) without
-        // needing a separate release keystore.
-        create("debugKey") {
-            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+        create("release") {
+            storeFile = providers.environmentVariable("WORKPAUSE_KEYSTORE_PATH").orNull?.let { file(it) }
+            storePassword = providers.environmentVariable("WORKPAUSE_STORE_PASSWORD").orNull
+            keyAlias = providers.environmentVariable("WORKPAUSE_KEY_ALIAS").orNull
+            keyPassword = providers.environmentVariable("WORKPAUSE_KEY_PASSWORD").orNull
+            storeType = "PKCS12"
         }
     }
 
@@ -47,7 +46,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debugKey")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
@@ -79,4 +78,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -1,5 +1,6 @@
 package com.worksched.profile
 
+// Modified for WorkPause: share deferred reconciliation and revalidate location on unlock.
 import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -10,75 +11,80 @@ import com.worksched.R
 import com.worksched.WorkSchedApp
 import com.worksched.alarm.ResumeRetryScheduler
 import com.worksched.data.ScheduleStore
+import com.worksched.location.LocationGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-/**
- * Completes a deferred resume once the device is unlocked.
- *
- * Triggered by:
- *   - ACTION_USER_PRESENT (device unlocked) — best-effort instant resume.
- *   - ResumeRetryScheduler.ACTION_RESUME_RETRY — the reliable inexact-alarm backbone.
- *
- * In both cases: if a resume is pending and not past its deadline, re-issue the
- * silent resume. On success, clear the pending flag and cancel the retry chain.
- * On the alarm path, if still locked, schedule the next retry.
- */
 class ResumeReconcileReceiver : BroadcastReceiver() {
-
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action ?: return
-        val fromRetry = action == ResumeRetryScheduler.ACTION_RESUME_RETRY
-        val fromUnlock = action == Intent.ACTION_USER_PRESENT
-        if (!fromRetry && !fromUnlock) return
-
-        val attempt = intent.getIntExtra(ResumeRetryScheduler.EXTRA_ATTEMPT, 0)
-        val appCtx = context.applicationContext
+        val fromRetry = intent.action == ResumeRetryScheduler.ACTION_RESUME_RETRY
+        if (!fromRetry && intent.action != Intent.ACTION_USER_PRESENT) return
+        val attempt = if (fromRetry) intent.getIntExtra(ResumeRetryScheduler.EXTRA_ATTEMPT, 0).coerceAtLeast(0) else null
         val pending = goAsync()
         CoroutineScope(Dispatchers.Default).launch {
             try {
-                val store = ScheduleStore(appCtx)
-                if (!store.pendingResume()) {
-                    Log.d(TAG, "no pending resume; ignoring ${action}")
-                    return@launch
-                }
-                val deadline = store.pendingResumeDeadline()
-                if (deadline in 1 until System.currentTimeMillis()) {
-                    Log.i(TAG, "pending resume past deadline; giving up")
-                    store.setPendingResume(false, 0L)
-                    ResumeRetryScheduler.cancel(appCtx)
-                    return@launch
-                }
-
-                val ok = WorkProfileToggler.toggle(appCtx, enable = true)
-                if (ok) {
-                    Log.i(TAG, "deferred resume completed (trigger=$action)")
-                    store.setPendingResume(false, 0L)
-                    ResumeRetryScheduler.cancel(appCtx)
-                    notify(appCtx, "Work profile resumed")
-                } else {
-                    Log.i(TAG, "still locked (trigger=$action); resume remains pending")
-                    if (fromRetry) ResumeRetryScheduler.schedule(appCtx, attempt + 1)
-                }
+                reconcile(context.applicationContext, attempt)
             } finally {
                 pending.finish()
             }
         }
     }
 
-    private fun notify(context: Context, text: String) {
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notif = NotificationCompat.Builder(context, WorkSchedApp.CHANNEL_ID)
-            .setContentTitle(context.getString(R.string.app_name))
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setAutoCancel(true)
-            .build()
-        nm.notify(1005, notif)
-    }
-
     companion object {
         private const val TAG = "ResumeReconcile"
+
+        suspend fun reconcile(context: Context, retryAttempt: Int? = null) {
+            val store = ScheduleStore(context)
+            if (!store.pendingResume()) return
+            if (store.pendingResumeDeadline() <= System.currentTimeMillis()) {
+                Log.i(TAG, "Pending resume expired; cancelling")
+                store.setPendingResume(false, 0L)
+                ResumeRetryScheduler.cancel(context)
+                return
+            }
+            if (QuietModeBackend.isDeviceLocked(context)) {
+                Log.i(TAG, "Device still locked; keeping resume pending")
+                if (retryAttempt != null) ResumeRetryScheduler.schedule(context, retryAttempt + 1)
+                return
+            }
+            val schedule = store.scheduleFlow.first()
+            if (!schedule.enabled || !schedule.isActiveAt()) {
+                Log.i(TAG, "Schedule no longer authorizes this deferred resume")
+                store.setPendingResume(false, 0L)
+                ResumeRetryScheduler.cancel(context)
+                return
+            }
+            if (schedule.locationEnabled) {
+                if (!schedule.hasValidLocation() || !LocationGate.inResumeWindowNow(schedule)) {
+                    Log.w(TAG, "Location-gated resume no longer has a valid work window")
+                    store.setPendingResume(false, 0L)
+                    ResumeRetryScheduler.cancel(context)
+                    return
+                }
+                if (!WorkProfileToggler.isSilent(context) || !LocationGate.canResumeNow(context, schedule)) {
+                    Log.w(TAG, "Deferred location-gated resume not authorized at current location")
+                    if (retryAttempt != null) ResumeRetryScheduler.schedule(context, retryAttempt + 1)
+                    return
+                }
+            }
+            if (!store.pendingResume() || store.pendingResumeDeadline() <= System.currentTimeMillis()) return
+            if (WorkProfileToggler.toggle(context, enable = true)) {
+                store.setPendingResume(false, 0L)
+                ResumeRetryScheduler.cancel(context)
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(1005, NotificationCompat.Builder(context, WorkSchedApp.CHANNEL_ID)
+                    .setContentTitle(context.getString(R.string.app_name))
+                    .setContentText("Work profile resumed")
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setAutoCancel(true)
+                    .build())
+                Log.i(TAG, "Deferred resume completed")
+            } else {
+                Log.i(TAG, "Resume not completed; keeping request pending")
+                if (retryAttempt != null) ResumeRetryScheduler.schedule(context, retryAttempt + 1)
+            }
+        }
     }
 }
