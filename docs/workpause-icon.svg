@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 108 108" role="img" aria-label="WorkPause: mint briefcase with a pause symbol on midnight blue">
+  <rect width="108" height="108" rx="24" fill="#13243A"/>
+  <path fill="#F0FDFA" d="M43 40V35Q43 31 47 31H61Q65 31 65 35V40H61V35H47V40Z"/>
+  <path fill="#5EEAD4" fill-rule="evenodd" d="M37 40H71Q79 40 79 48V70Q79 78 71 78H37Q29 78 29 70V48Q29 40 37 40Z M47 51H49Q51 51 51 53V65Q51 67 49 67H47Q45 67 45 65V53Q45 51 47 51Z M59 51H61Q63 51 63 53V65Q63 67 61 67H59Q57 67 57 65V53Q57 51 59 51Z"/>
+</svg>

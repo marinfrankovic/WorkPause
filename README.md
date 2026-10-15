@@ -1,164 +1,109 @@
-# Work Profile Scheduler
+<!-- Modified for WorkPause: independent project documentation. -->
+# WorkPause
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Android%2010%2B-3ddc84.svg)](https://www.android.com/)
-[![minSdk](https://img.shields.io/badge/minSdk-29-orange.svg)](app/build.gradle.kts)
-[![Build](https://github.com/ravindrasan1997/work-profile-scheduler/actions/workflows/build.yml/badge.svg)](../../actions)
-[![Release](https://img.shields.io/github/v/release/ravindrasan1997/work-profile-scheduler?color=blue&label=release)](../../releases/latest)
+<img src="docs/workpause-icon.svg" width="128" height="128" alt="WorkPause icon">
 
-A small, single-screen Android app that automatically **pauses and resumes your work profile** on a schedule you choose — and can do it **completely silently** after a one-time ADB setup. No root, no Shizuku, no continuous background service.
+**Work on your schedule.**
 
-> Built and tested on a Samsung Galaxy A56 (One UI 8.5, Android 16) with a Microsoft Intune-managed work profile, which is left fully intact.
-
-## Why this exists
-
-Stock Android already has a built-in work-profile scheduler: **Settings → Digital Wellbeing & parental controls → Work profile schedule** lets you set work hours and the OS pauses/resumes the profile automatically — silently, natively, no extra app.
-
-The problem: **some OEMs remove this feature from their version of Digital Wellbeing.** Samsung's One UI, in particular, ships its own Digital Wellbeing without the work-profile scheduler, and Samsung has stated there are no immediate plans to add it. So on a lot of very popular phones, a feature that exists in AOSP simply isn't there — and there's no first-party way to schedule when work apps turn off in the evening and back on in the morning.
-
-This app fills that gap: it reproduces the missing scheduler on devices where the OEM stripped it out, while staying as close as possible to how the system itself does it (the same `requestQuietModeEnabled` API the OS uses), without root or a persistent background service.
+WorkPause pauses and resumes an existing Android work profile on selected weekdays,
+with optional location-based resuming. It uses Android alarms rather than a continuous
+scheduler service.
 
 ## Features
 
-- **Custom schedule** — pick which days of the week it runs (any combination, default Mon–Fri) and one *Resume at* + one *Pause at* time. Default: resume 10:00, pause 19:00.
-- **Silent operation** — after a one-time `adb` grant, pause/resume happen via a direct system API in ~50 ms with no UI and no screen wake.
-- **Manual toggle** — *Resume now* / *Pause now* buttons.
-- **Deferred resume** — a resume that fires while the phone is locked completes automatically on your next unlock, with no extra passcode prompt.
-- **Reboot-safe** — schedule re-armed on `BOOT_COMPLETED`, `TIMEZONE_CHANGED`, and app update.
-- **Battery-friendly** — exact `AlarmManager` triggers only; no foreground service, near-zero idle cost.
-- **In-app setup** — a **Setup & permissions** sheet shows live status for silent mode, the accessibility fallback, exact alarms, and battery optimization, with the one-time ADB command ready to copy.
-- **Resume at a place** *(optional)* — turn work apps on only when you reach a chosen location, via a battery-light, event-driven geofence (no constant tracking). The spot is shown as a readable address.
-- **Material 3 UI** — Jetpack Compose, dynamic color, edge-to-edge.
+- Scheduled resume and pause times, with weekday selection.
+- Manual resume and pause controls.
+- Silent control after a one-time ADB permission grant.
+- Optional resume-at-a-place location check.
+- Deferred resume when Android requires the device or work profile to be unlocked.
+- Material 3 interface and adaptive, round, and themed launcher icons.
 
-## How it works
+## App identity
 
-Pausing/resuming a work profile uses the system API `UserManager.requestQuietModeEnabled()`, which requires the privileged `MODIFY_QUIET_MODE` permission. On Android that permission carries the `development` protection flag, so — like `WRITE_SECURE_SETTINGS` used by apps such as Private DNS Toggle — it **can be granted to an ordinary app with a one-time ADB command**:
+- Application ID: `io.github.marinfrankovic.workpause`
+- Initial version: `1.0.0` (version code `1`)
+- Repository: [marinfrankovic/WorkPause](https://github.com/marinfrankovic/WorkPause)
 
-```bash
-adb shell pm grant com.worksched android.permission.MODIFY_QUIET_MODE
-```
+WorkPause installs separately from the original application. Settings and permission
+grants do not migrate automatically.
 
-Once granted (the grant survives reboots; only a reinstall or manual revoke clears it), the app toggles the profile directly and silently. This holds a permission in the personal profile and toggles the work profile across the profile boundary — it **never changes profile ownership**, so MDM enrolment (e.g. Intune) and compliance are unaffected.
+## Requirements and setup
 
-**Fallback without the grant:** if the permission isn't granted, the app still works by automating the Quick Settings "Work apps" tile through an `AccessibilityService` (this briefly opens the panel / wakes the screen). Enable it from **⋮ → Setup & permissions**. The app upgrades itself to the silent path automatically once the permission is present.
+Android 10 or newer and an existing Android work profile are required. Samsung Secure
+Folder is not a substitute for a work profile.
 
-**Deferred resume (locked screen):** a work profile's apps live in credential-encrypted storage whose keys only exist after the device is unlocked, so a *resume* cannot complete silently while locked. Instead of queuing a credential prompt, the app defers the resume and re-issues it on the next unlock (via `USER_PRESENT` plus a battery-light retry alarm), completing silently after your normal unlock. This assumes the work profile shares the device lock (unified lock — the common setup).
+1. Install a WorkPause APK on the personal side of the device.
+2. For silent control, grant the permission from an authorized ADB host:
 
-**Resume at a place (optional):** when this is enabled, a scheduled resume only turns the profile on if you're at the chosen location. If you're away, the OS watches for your arrival with a platform geofence (`LocationManager.addProximityAlert`) — event-driven and armed only during the work window, so it stays battery-light — and resumes the moment you reach the spot (composing with the deferred resume above if the phone is locked on arrival). The chosen place is reverse-geocoded to a readable address via the device `Geocoder`. This path uses the silent backend and needs location permission (*Allow all the time* for the background check); the scheduled **pause is never gated by location**.
-
-## Requirements
-
-- Android 10 (API 29) or newer; built against API 35, runs on Android 16.
-- A provisioned **work profile** on the device.
-- A PC with `adb` for the one-time silent-mode grant (optional but recommended).
-- For the optional **Resume at a place** feature: location permission including background (*Allow all the time*), and device Location switched on. Resolving the address uses the network.
-
-## Install
-
-1. Download `WorkProfileScheduler.apk` from the [Releases](../../releases) page.
-2. Install it:
-   ```bash
-   adb install -r WorkProfileScheduler.apk
+   ```text
+   adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE
    ```
-3. (Recommended) Enable silent mode — one time, persists across reboots:
-   ```bash
-   adb shell pm grant com.worksched android.permission.MODIFY_QUIET_MODE
-   ```
-4. Open **⋮ → Setup & permissions** in the app and allow **exact alarms** (needed for on-time firing); the same sheet also offers a battery-optimization exemption for reliable scheduling.
 
-If you skip step 3, open **⋮ → Setup & permissions** and enable the **Work Profile Toggler** accessibility service instead.
+3. Open **Setup & permissions** and review exact alarms and battery restrictions.
+4. Select weekdays and times, then save the schedule.
+5. Enable background location only if using **Resume at a place**.
 
-## Usage
+Accessibility is an optional, visible fallback, not a requirement for the silent backend.
+The app cannot bypass a device or work-profile PIN. Employer policy can restrict its use.
 
-- The hero card shows the current state — **Work apps are on** or **Work apps are paused** — and the next scheduled pause or resume.
-- Use **Resume now** / **Pause now** for an immediate toggle; each button is disabled when the profile is already in that state.
-- Under **Repeat on**, tap the day chips (Mon–Sun) to choose which days the schedule runs. Default is Mon–Fri; deselecting all turns scheduling off (manual buttons still work).
-- Under **Hours**, tap the **Resume at** / **Pause at** tiles to pick times with the Material 3 clock dial, then **Save schedule**.
-- Open **⋮ → Setup & permissions** for live status of silent mode, the accessibility fallback, exact alarms, battery optimization, and location access — each with its action and a **Re-check**. An inline banner appears on the main screen only when something needs attention. **How it works** and **About** are in the same **⋮** menu.
-- *(Optional)* Turn on **Resume at a place** in the schedule card, tap **Set location**, then **Use my current location** (or enter coordinates) and choose a radius. Work apps then turn on only when you reach that spot during your schedule.
+## Build and test
 
-Verify the schedule from a PC:
-```bash
-adb shell dumpsys alarm | grep com.worksched   # two RTC_WAKEUP triggers per selected day
+Use JDK 17 or 21 and the Android SDK. Set `JAVA_HOME` and `ANDROID_HOME`.
+On Windows:
+
+```powershell
+.\gradlew.bat :app:assembleDebug :app:lintDebug
+adb -s emulator-5556 install -r .\app\build\outputs\apk\debug\app-debug.apk
 ```
 
-## Build from source
+The debug APK is for development only. Debug and release builds share the application
+ID but use different signing keys; Android will not install one over the other.
+Uninstalling clears that installation's settings and permission grants.
 
-```bash
-./gradlew :app:assembleDebug
-# APK at app/build/outputs/apk/debug/app-debug.apk
+## Release signing
+
+Release builds require WorkPause's private key and never fall back to debug signing.
+Windows helpers store the PKCS12 keystore outside the repository, under
+`%LOCALAPPDATA%\WorkPause\signing`, with access restricted to the current Windows account.
+The randomly generated password is encrypted with Windows DPAPI.
+
+Initialize once, then build:
+
+```powershell
+.\tools\Initialize-ReleaseSigning.ps1
+.\tools\Build-Release.ps1
 ```
 
-The APK published on Releases is the minified release build:
+The signed APK is written to `app\build\outputs\apk\release\app-release.apk`.
+For other environments, provide `WORKPAUSE_KEYSTORE_PATH`, `WORKPAUSE_STORE_PASSWORD`,
+`WORKPAUSE_KEY_ALIAS`, and `WORKPAUSE_KEY_PASSWORD` securely before running
+`:app:assembleRelease`. Never put passwords in command-line arguments, tracked files,
+or logs. CI builds debug artifacts only and does not receive the release key.
 
-```bash
-./gradlew :app:assembleRelease
-# minified + resource-shrunk, debug-signed APK (~2.5 MB) at
-# app/build/outputs/apk/release/app-release.apk
-```
+**Backup is essential:** losing the private key or its password can prevent future
+updates. DPAPI credentials are tied to this Windows user and machine; copying the
+encrypted password file alone is not a portable recovery backup. Arrange a protected
+off-device backup of the keystore and a separately secured password before distribution.
 
-Requirements: JDK 17, Android SDK with `platforms;android-35` and `build-tools;36.0.0`. Set `ANDROID_HOME`/`ANDROID_SDK_ROOT` or create a `local.properties` with `sdk.dir=...`.
+Increase `versionCode` for every published update. Version names and release tags are
+managed independently from upstream.
 
-A convenience script `build.sh` generates the Gradle wrapper (gradle 8.10.2) and builds; it passes `--no-validate-url` to the wrapper task because some networks/CDNs fail Gradle's distribution-URL probe even when the download works.
+## Status and limitations
 
-## Architecture
+- Emulator installation and appearance do not establish Samsung or enterprise compatibility.
+- Location gating is a convenience, not a security enforcement boundary.
+- The inherited external `TEST_FIRE` hook remains a known security issue and must be
+  addressed before public distribution or privileged use on a real work phone.
+- No public release is published as part of the initial setup.
 
-```
-app/src/main/java/com/worksched/
-├── WorkSchedApp.kt                   Application: notification channel + re-arm on cold start
-├── MainActivity.kt                   Single-screen entry; edge-to-edge; TEST_FIRE debug hook
-├── ui/MainScreen.kt                  Header + ⋮ menu, hero card, manual toggles, schedule, setup sheet + dialogs
-├── ui/theme/Theme.kt                 Material 3 dynamic colour
-├── data/Schedule.kt                  resume/pause times + selected days + optional location gate
-├── data/ScheduleStore.kt             DataStore<Preferences> (schedule + pending-resume + geofence-armed)
-├── alarm/AlarmScheduler.kt           exact PendingIntents (2 per selected day); locale-safe next scan
-├── alarm/ToggleReceiver.kt           Alarm fire → location gate → silent API (or visible fallback) + re-arm
-├── alarm/ToggleActivity.kt           Screen-wake activity (visible fallback path only)
-├── alarm/ResumeRetryScheduler.kt     Inexact allow-while-idle retry for a deferred resume
-├── boot/BootReceiver.kt              Re-arm alarms + geofence on boot / time change / app update
-├── profile/WorkProfileDetector.kt    Finds the work profile via UserManager.userProfiles
-├── profile/ProfileChangeReceiver.kt  Re-arm when a managed profile is added/removed
-├── profile/QuietModeBackend.kt       Silent backend: requestQuietModeEnabled() + cred-not-required flag
-├── profile/ResumeReconcileReceiver.kt USER_PRESENT + retry → completes a deferred resume on unlock
-├── profile/WorkProfileToggler.kt     Dispatcher: silent preferred, accessibility fallback
-├── location/LocationGate.kt          Location permission/geometry, one-shot fix, Geocoder address
-├── location/GeofenceManager.kt       Arm/disarm an OS proximity alert (event-driven geofence)
-├── location/GeofenceReceiver.kt      Geofence ENTER → resume on arrival
-└── service/WorkProfileA11yService.kt  Fallback: Quick Settings "Work apps" tile gesture
-```
+## Artwork
 
-## Troubleshooting
+The original WorkPause icon combines a mint briefcase and negative-space pause symbol
+on midnight blue. The editable source is [docs/workpause-icon.svg](docs/workpause-icon.svg).
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| **Setup & permissions** still shows silent mode as not set up after the grant | App cached old state, or grant hit the wrong user | Tap **Re-check**; confirm `dumpsys package com.worksched \| grep MODIFY_QUIET_MODE` shows `granted=true` for user 0 |
-| `SecurityException` on toggle | Permission not actually granted | Re-run the `pm grant`; install the APK first (grant fails if the package is absent) |
-| Resume shows a passcode prompt | Work profile uses a *separate* work lock (not unified) | Inherent to that setup; pause stays silent. With a unified lock, resume defers and completes silently on unlock |
-| Grant gone after reinstall/OS update | Development-flag grants clear on package reinstall | Re-run the one `pm grant` line |
-| Alarms drift on time | OEM battery optimization | Add the app to *Settings → Battery → Background usage → Allowed* |
-| Work apps don't turn on at my location | Device Location is off, or background location isn't set to "Allow all the time" | Open **⋮ → Setup & permissions → Location access**; enable device Location and grant "Allow all the time" |
+## License and attribution
 
-A live verification log is in [`docs/VERIFICATION.md`](docs/VERIFICATION.md).
-
-## Limitations & scope
-
-- **Not distributable via Google Play** — it declares a privileged permission and relies on an ADB grant / accessibility automation, which Play policy doesn't allow. Distribution is via the APK in Releases.
-- **Debug-signed** — releases use the Android debug key. A proper release keystore is a future addition.
-- **Silent mode requires the ADB grant**; without it the app falls back to the visible accessibility path.
-- **Deferred resume assumes a unified device/work lock** (the common Intune setup).
-- **Location gating** (optional) needs the silent backend, *Allow all the time* location, and device Location on; the readable address is fetched over the network via the system geocoder.
-
-## Roadmap
-
-- Automatic APK attach to GitHub Releases on tag.
-- Optional richer scheduling (per-day times, weekend inclusion).
-- F-Droid metadata for libre distribution.
-- Optional release signing via CI secrets.
-
-## License
-
-[Apache License 2.0](LICENSE). Copyright 2026 Ravindra.
-
-## Disclaimer
-
-Provided **as is**, without warranty of any kind. Not affiliated with or endorsed by Google, Samsung, or Microsoft. "Android", "Samsung", "One UI", and "Intune" are trademarks of their respective owners. Use at your own risk.
+Licensed under [Apache License 2.0](LICENSE). Based on
+[Work Profile Scheduler](https://github.com/ravindrasan1997/work-profile-scheduler),
+Copyright 2026 Ravindra. Required attribution is retained in [NOTICE](NOTICE).
+WorkPause is an independently maintained fork and does not imply upstream endorsement.
