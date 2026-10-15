@@ -10,7 +10,7 @@ There is also no WorkPause-specific verification of Intune, Knox, employer compl
 separate work-profile credentials, or Samsung background restrictions.
 Testing performed on the original application must not be presented as testing of WorkPause.
 
-## WorkPause 1.0.0 preview
+## WorkPause 1.0.1 preview
 
 | Check | Status |
 |---|---|
@@ -18,7 +18,7 @@ Testing performed on the original application must not be presented as testing o
 | Weekly schedule and location regression tests | 29 passed, no failures/errors/skips |
 | Android debug lint | Passed, with warnings |
 | Protected release signing | Passed: account-restricted PKCS12 key, DPAPI-protected password |
-| Release APK signature and packaged identity | Passed: RSA-4096 certificate, own application ID, version 1.0.0 |
+| Release APK signature and packaged identity | Passed: RSA-4096 certificate, own application ID, version 1.0.1 |
 | Packaged legal notices | LICENSE and NOTICE match the root originals exactly |
 | Removed testing entry point | TEST_FIRE absent from compiled code; invoking old action creates no test PendingIntent |
 | Internal retry receiver | Non-exported in the packaged manifest |
@@ -33,7 +33,10 @@ Testing performed on the original application must not be presented as testing o
 | Location-triggered resume on a physical device | Not tested |
 | Samsung S24 Ultra / One UI 9 compatibility | Not tested |
 
-These checks describe the WorkPause 1.0.0 release candidate. The emulator had no work
+The scheduler UI checks were performed for WorkPause 1.0.0; 1.0.1 retains those
+controls and corrects the README, About description, and accessibility service label.
+Build, unit tests, lint, signing, packaged version, and installation are rechecked
+for 1.0.1. The emulator had no work
 profile: installation, rendering, and scheduler editing were tested, not actual profile
 switching. The Copy command check verified its UI response, not an independent read of
 Android's clipboard contents.
@@ -44,8 +47,8 @@ week rollover, disabled automation, and daylight-saving changes. The 7 location
 tests cover fix age, invalid accuracy, saved coordinates/radius, and active-window
 boundaries. They do not simulate Android's location providers or enterprise management.
 
-Release identity: `io.github.marinfrankovic.workpause`, version name `1.0.0`, version
-code `1`, non-debuggable. The release certificate SHA-256 fingerprint is:
+Release identity: `io.github.marinfrankovic.workpause`, version name `1.0.1`, version
+code `2`, non-debuggable. The release certificate SHA-256 fingerprint is:
 
 ```text
 b57687219a28dd705da54e5d804e1b556d5bb4ff3f43fe35b389be016bddbefe

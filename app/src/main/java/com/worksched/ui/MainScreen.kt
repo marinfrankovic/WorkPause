@@ -935,7 +935,7 @@ private fun AboutDialog(onDismiss: () -> Unit) {
             Column {
                 Text("Version ${com.worksched.BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(8.dp))
-                Text("Pauses and resumes your Android work profile on a schedule — optionally only when you reach a chosen place. No root. Open source on GitHub, Apache-2.0.",
+                Text("Pauses and resumes your Android work profile on your weekly schedule. Choose custom hours, ON all day, or OFF all day for each weekday. No root. Open source on GitHub, Apache-2.0.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
                 Text("Based on Work Profile Scheduler. Copyright 2026 Ravindra. Licensed under Apache License 2.0.",

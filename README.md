@@ -1,11 +1,15 @@
 <!-- Modified for WorkPause: independent project documentation. -->
 # WorkPause
 
+[![Version 1.0.1 Preview](https://img.shields.io/badge/Version-1.0.1_Preview-2C5CC5)](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.1)
 [![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](#requirements-and-setup)
 [![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)](app/src/main/java/com/worksched)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)](app/src/main/java/com/worksched/ui)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Build](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml/badge.svg)](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml)
+
+**[Latest release: WorkPause 1.0.1 Preview](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.1)**
+ · **[Download signed APK](https://github.com/marinfrankovic/WorkPause/releases/download/v1.0.1/WorkPause-1.0.1.apk)**
 
 <img src="docs/workpause-icon.svg" width="128" height="128" alt="WorkPause icon">
 
@@ -50,15 +54,14 @@ With Auto off, saved schedules remain available but do not change the profile au
 ## App identity
 
 - Application ID: `io.github.marinfrankovic.workpause`
-- Initial version: `1.0.0` (version code `1`)
+- Current version: `1.0.1` (version code `2`)
 - Repository: [marinfrankovic/WorkPause](https://github.com/marinfrankovic/WorkPause)
 
 WorkPause installs separately from the original application. Settings and permission
 grants do not migrate automatically.
-The fork retains upstream Git history, so old commit messages and tags may still
-mention Work Profile Scheduler v1.4.0 or v1.7.0. These are historical upstream versions,
-not the version of the WorkPause APK. Use this repository's **WorkPause 1.0.0 Preview**
-release, not an inherited upstream tag.
+The fork retains upstream Git history. Commit messages shown beside unchanged files
+describe their last edit, not the installed app version. Use the WorkPause release
+linked above, not an inherited upstream tag.
 
 ## Requirements and setup
 
@@ -67,7 +70,7 @@ Folder is not a substitute for a work profile.
 
 ### Install with ADB
 
-1. Download the signed `WorkPause-1.0.0.apk` from this repository's
+1. Download the signed `WorkPause-1.0.1.apk` from this repository's
    [Releases](https://github.com/marinfrankovic/WorkPause/releases) page.
    Preview versions may be marked **Pre-release**. Do not install APKs from untrusted mirrors.
 2. Install Google's [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)
@@ -78,12 +81,12 @@ Folder is not a substitute for a work profile.
 
    ```powershell
    adb devices
-   adb install -r "C:\path\to\WorkPause-1.0.0.apk"
+   adb install -r "C:\path\to\WorkPause-1.0.1.apk"
    ```
 
    Replace the example path with your downloaded APK. The device should appear as
    `device`, not `unauthorized`. If multiple devices are connected, use
-   `adb -s DEVICE_SERIAL install -r "C:\path\to\WorkPause-1.0.0.apk"`.
+   `adb -s DEVICE_SERIAL install -r "C:\path\to\WorkPause-1.0.1.apk"`.
    In PowerShell, use `.\adb.exe` instead of `adb` if running from the Platform Tools
    folder without adding it to `PATH`.
 5. Open WorkPause from the launcher.
@@ -94,7 +97,7 @@ To check the installed version:
 adb shell dumpsys package io.github.marinfrankovic.workpause | Select-String "versionCode=|versionName="
 ```
 
-Expect `versionName=1.0.0` and `versionCode=1`. On the phone, you can also check
+Expect `versionName=1.0.1` and `versionCode=2`. On the phone, you can also check
 **Settings → Apps → WorkPause → App info** (the exact layout varies by device).
 
 The `-r` option updates an existing installation without clearing its data, provided
@@ -145,10 +148,6 @@ still apply.
 4. In Settings, allow **Exact alarms** for precise timing. Unrestricted battery use is
    recommended to reduce delays; these permissions do not grant profile control.
    Turn **Auto** on and tap **Save** when you are ready to enable automation.
-
-Location setup is hidden for now to keep the interface focused on scheduling.
-If a saved configuration already has location gating enabled, its controls remain
-in Settings so you can turn it off; tap Save on the main screen to apply that change.
 
 An earlier To time ends the work interval the next day. **All day OFF takes priority
 at midnight**, including over the previous day's overnight interval. All day ON spans
@@ -217,12 +216,9 @@ managed independently from upstream.
 - The current preview passed 29 unit tests, Android debug lint, release-signature checks,
   and emulator UI smoke checks. The emulator has no managed work profile, so this does
   not verify real profile toggling.
-- Location gating is a convenience, not a security enforcement boundary.
 - The inherited external testing hook has been removed. Internal retry broadcasts are
   non-exported, accessibility is restricted to System UI, and generic confirmation
   buttons are no longer clicked automatically.
-- Location-based automatic resumes require a fresh fix with valid accuracy and
-  revalidate location after unlocking. Manual resume remains an explicit override.
 - This is an initial preview, not a claim of verified compatibility with Samsung or Intune.
 - **Not tested on a real phone**, including the Samsung Galaxy S24 Ultra / One UI 9.
   See the [verification record](docs/VERIFICATION.md) for the checks actually performed.
