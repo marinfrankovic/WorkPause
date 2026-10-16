@@ -1,6 +1,14 @@
 <!-- Modified for WorkPause: replace inherited claims with this fork's actual verification status. -->
 # WorkPause verification
 
+## CI environment
+
+The Android build workflow uses JDK 17 and explicitly installs `platform-tools` and
+`platforms;android-35`. This overrides the pinned SDK setup action's default package
+list, which includes the obsolete `tools` package and fails during SDK setup.
+The workflow builds the debug APK, runs unit tests and lint, and uploads a debug
+artifact; it does not publish or replace the signed release APK.
+
 ## Physical phone: user-confirmed operation
 
 On **2026-10-16**, the owner reported personally testing WorkPause 1.0.2 on a
