@@ -1,15 +1,15 @@
 <!-- Modified for WorkPause: independent project documentation. -->
 # WorkPause
 
-[![Version 1.0.1 Preview](https://img.shields.io/badge/Version-1.0.1_Preview-2C5CC5)](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.1)
+[![Version 1.0.2 Preview](https://img.shields.io/badge/Version-1.0.2_Preview-2C5CC5)](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.2)
 [![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](#requirements-and-setup)
 [![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)](app/src/main/java/com/worksched)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)](app/src/main/java/com/worksched/ui)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Build](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml/badge.svg)](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml)
 
-**[Latest release: WorkPause 1.0.1 Preview](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.1)**
- · **[Download signed APK](https://github.com/marinfrankovic/WorkPause/releases/download/v1.0.1/WorkPause-1.0.1.apk)**
+**[Latest release: WorkPause 1.0.2 Preview](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.2)**
+ · **[Download signed APK](https://github.com/marinfrankovic/WorkPause/releases/download/v1.0.2/WorkPause-1.0.2.apk)**
 
 <img src="docs/workpause-icon.svg" width="128" height="128" alt="WorkPause icon">
 
@@ -23,17 +23,29 @@ It uses Android alarms rather than a continuous scheduler service.
 - Three choices for every weekday: **Schedule**, **All day ON**, or **All day OFF**.
 - **From → To** times define the hours when your work profile is ON.
 - Copy one day's behavior and remembered hours to any other days.
-- Overnight hours and an explicit Save button for all changes.
-- Compact single-row header with an **Auto** switch and Settings gear.
-- Manual resume/pause control.
+- One **WorkPause ON/OFF** switch, applied immediately.
+- **ON:** follow the saved schedule. **OFF:** leave work apps as set on the phone.
+- Overnight hours and a **Save schedule** button for daily edits only.
+- Compact single-row header with the WorkPause switch and Settings gear.
 - Silent control after a one-time ADB permission grant.
 - Deferred resume when Android requires the device or work profile to be unlocked.
 - Material 3 interface and adaptive, round, and themed launcher icons.
 
 ## Using the scheduler
 
-The compact top bar contains the app name, **Auto** switch, and Settings gear.
-There is no separate weekly-schedule heading or repeated selected-day title.
+The compact top bar contains the app name, one **ON/OFF** switch, and Settings gear.
+There are no separate Auto, Resume, or Pause controls.
+
+- **WorkPause ON:** immediately follows your saved weekly schedule, including applying
+  the current scheduled state.
+- **WorkPause OFF:** stops WorkPause's scheduled changes, pending resumes, and queued
+  fallback actions. It does not turn work apps on or off, restore an earlier state,
+  or change Android's own settings or employer policy. Use the phone's normal controls
+  while WorkPause is off.
+
+The switch applies immediately and stays set after closing or restarting the app.
+Your saved daily rules are retained when WorkPause is off.
+
 Choose a day directly from the Monday-Sunday strip, then choose its behavior:
 
 | Mode | Work profile behavior |
@@ -45,16 +57,16 @@ Choose a day directly from the Monday-Sunday strip, then choose its behavior:
 The two all-day modes use matching descriptions and hide the time fields.
 Switching modes keeps the day's remembered From/To times. **Copy to other days**
 copies both the mode and those times to the days you select.
-Day selection alone does not save: tap **Save** to apply all edits, including **Auto**.
-With Auto off, saved schedules remain available but do not change the profile automatically.
-**Resume now** / **Pause now** is available when an existing work profile is detected.
+Tap **Save schedule** to apply daily edits. Switching WorkPause on or off does not
+save unfinished edits; ON always uses the last saved rules. Saving daily edits while
+WorkPause is OFF does not turn it on or change the work profile.
 
 <img src="docs/screenshots/workpause-main.png" width="320" alt="WorkPause compact header and per-day scheduler in the Android emulator">
 
 ## App identity
 
 - Application ID: `io.github.marinfrankovic.workpause`
-- Current version: `1.0.1` (version code `2`)
+- Current version: `1.0.2` (version code `3`)
 - Repository: [marinfrankovic/WorkPause](https://github.com/marinfrankovic/WorkPause)
 
 WorkPause installs separately from the original application. Settings and permission
@@ -70,7 +82,7 @@ Folder is not a substitute for a work profile.
 
 ### Install with ADB
 
-1. Download the signed `WorkPause-1.0.1.apk` from this repository's
+1. Download the signed `WorkPause-1.0.2.apk` from this repository's
    [Releases](https://github.com/marinfrankovic/WorkPause/releases) page.
    Preview versions may be marked **Pre-release**. Do not install APKs from untrusted mirrors.
 2. Install Google's [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)
@@ -81,12 +93,12 @@ Folder is not a substitute for a work profile.
 
    ```powershell
    adb devices
-   adb install -r "C:\path\to\WorkPause-1.0.1.apk"
+   adb install -r "C:\path\to\WorkPause-1.0.2.apk"
    ```
 
    Replace the example path with your downloaded APK. The device should appear as
    `device`, not `unauthorized`. If multiple devices are connected, use
-   `adb -s DEVICE_SERIAL install -r "C:\path\to\WorkPause-1.0.1.apk"`.
+   `adb -s DEVICE_SERIAL install -r "C:\path\to\WorkPause-1.0.2.apk"`.
    In PowerShell, use `.\adb.exe` instead of `adb` if running from the Platform Tools
    folder without adding it to `PATH`.
 5. Open WorkPause from the launcher.
@@ -97,7 +109,7 @@ To check the installed version:
 adb shell dumpsys package io.github.marinfrankovic.workpause | Select-String "versionCode=|versionName="
 ```
 
-Expect `versionName=1.0.1` and `versionCode=2`. On the phone, you can also check
+Expect `versionName=1.0.2` and `versionCode=3`. On the phone, you can also check
 **Settings → Apps → WorkPause → App info** (the exact layout varies by device).
 
 The `-r` option updates an existing installation without clearing its data, provided
@@ -144,17 +156,18 @@ still apply.
    Expand **Set up with ADB** for instructions and a **Copy command** button.
 3. Select a weekday and choose **All day OFF**, **All day ON**, or **Schedule**.
    For Schedule, set **From** and **To** to define the ON interval.
-   Repeat for other days or use **Copy to other days**, then tap **Save**.
+   Repeat for other days or use **Copy to other days**, then tap **Save schedule**.
 4. In Settings, allow **Exact alarms** for precise timing. Unrestricted battery use is
    recommended to reduce delays; these permissions do not grant profile control.
-   Turn **Auto** on and tap **Save** when you are ready to enable automation.
+   Turn **WorkPause ON** when you are ready to follow your saved schedule; no Save
+   is required for the switch.
 
 An earlier To time ends the work interval the next day. **All day OFF takes priority
 at midnight**, including over the previous day's overnight interval. All day ON spans
 local midnight to midnight, including clock-change days. Overlapping ON intervals
 remain on until the combined interval ends. Previously disabled weekdays map to
 All day OFF; review overnight schedules after updating. Turning off the
-**Auto** switch and saving cancels automation without changing the current profile state.
+**WorkPause** switch immediately cancels automation without changing the current profile state.
 Saving an enabled schedule also applies the current scheduled state.
 
 The design is inspired by Samsung's simple settings layouts; it does not use proprietary
@@ -213,7 +226,7 @@ managed independently from upstream.
 ## Status and limitations
 
 - Emulator installation and appearance do not establish Samsung or enterprise compatibility.
-- The current preview passed 29 unit tests, Android debug lint, release-signature checks,
+- The current preview passed 31 unit tests, Android debug lint, release-signature checks,
   and emulator UI smoke checks. The emulator has no managed work profile, so this does
   not verify real profile toggling.
 - The inherited external testing hook has been removed. Internal retry broadcasts are

@@ -65,6 +65,24 @@ class WeeklyScheduleTest {
         assertNull(week.nextTransition(at("2026-10-19T10:00:00+02:00"), zone))
     }
 
+    @Test fun `WorkPause off takes priority over all day ON`() {
+        val week = emptyWeek().withDay(Calendar.MONDAY, DaySchedule(mode = DayMode.ALL_ON))
+            .copy(enabled = false)
+        assertFalse(week.isActiveAt(at("2026-10-19T10:00:00+02:00"), zone))
+        assertNull(week.nextTransition(at("2026-10-19T10:00:00+02:00"), zone))
+        assertNull(week.activeWindowEndMillis(at("2026-10-19T10:00:00+02:00"), zone))
+    }
+
+    @Test fun `editing and copying days while WorkPause is off do not enable it`() {
+        val off = Schedule.default().copy(enabled = false)
+        val edited = off.withDay(Calendar.MONDAY, DaySchedule(true, 9 * 60, 17 * 60))
+            .copyDayTo(Calendar.MONDAY, setOf(Calendar.TUESDAY))
+        assertFalse(edited.enabled)
+        assertEquals(edited.forDay(Calendar.MONDAY), edited.forDay(Calendar.TUESDAY))
+        assertEquals(9 * 60, edited.forDay(Calendar.TUESDAY).resumeMinutes)
+        assertFalse(edited.isActiveAt(at("2026-10-19T10:00:00+02:00"), zone))
+    }
+
     @Test fun `disabled days have no hours or transitions`() {
         val week = emptyWeek()
         assertFalse(week.isActiveAt(at("2026-10-19T10:00:00+02:00"), zone))

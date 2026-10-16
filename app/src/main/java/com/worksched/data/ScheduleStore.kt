@@ -25,10 +25,10 @@ class ScheduleStore(private val context: Context) {
     private val geofenceArmedKey = booleanPreferencesKey("geofence_armed")
     private val json = Json { ignoreUnknownKeys = true }
 
-    val scheduleFlow: Flow<Schedule> = context.dataStore.data.map { prefs ->
-        prefs[scheduleKey]?.let { raw ->
+    private fun decodeSchedule(raw: String?): Schedule =
+        raw?.let {
             try {
-                json.decodeFromString<Schedule>(raw).also {
+                json.decodeFromString<Schedule>(it).also {
                     require(it.validationError() == null) { requireNotNull(it.validationError()) }
                 }
             } catch (e: IllegalArgumentException) {
@@ -36,11 +36,25 @@ class ScheduleStore(private val context: Context) {
                 Schedule.default().copy(enabled = false)
             }
         } ?: Schedule.default()
+    val scheduleFlow: Flow<Schedule> = context.dataStore.data.map { decodeSchedule(it[scheduleKey]) }
+
+    suspend fun saveScheduleEdits(schedule: Schedule): Schedule {
+        require(schedule.validationError() == null) { requireNotNull(schedule.validationError()) }
+        val saved = context.dataStore.edit { prefs ->
+            val enabled = decodeSchedule(prefs[scheduleKey]).enabled
+            prefs[scheduleKey] = json.encodeToString(schedule.copy(enabled = enabled))
+        }
+        return decodeSchedule(saved[scheduleKey])
     }
 
-    suspend fun save(schedule: Schedule) {
-        require(schedule.validationError() == null) { requireNotNull(schedule.validationError()) }
-        context.dataStore.edit { it[scheduleKey] = json.encodeToString(schedule) }
+    suspend fun setEnabled(enabled: Boolean): Schedule {
+        val saved = context.dataStore.edit { prefs ->
+            val schedule = decodeSchedule(prefs[scheduleKey]).copy(enabled = enabled)
+            prefs[scheduleKey] = json.encodeToString(schedule)
+            prefs[pendingResumeKey] = false
+            prefs[pendingResumeDeadlineKey] = 0L
+        }
+        return decodeSchedule(saved[scheduleKey])
     }
 
     // ---- pending-resume state (deferred resume while device locked) ----

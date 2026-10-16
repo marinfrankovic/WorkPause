@@ -41,6 +41,11 @@ class WorkProfileA11yService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* no-op */ }
     override fun onInterrupt() {}
 
+    fun cancelPendingToggle() {
+        main.removeCallbacksAndMessages(null)
+        Log.i(TAG, "Pending tile actions cancelled because WorkPause is off")
+    }
+
     fun executeToggle(desired: Boolean) {
         Log.i(TAG, "executeToggle(desired=$desired)")
         val opened = performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)

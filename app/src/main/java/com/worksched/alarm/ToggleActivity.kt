@@ -9,6 +9,10 @@ import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import com.worksched.profile.WorkProfileToggler
+import com.worksched.data.ScheduleStore
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * FALLBACK wake activity. Only launched by [ToggleReceiver] when the silent
@@ -46,8 +50,16 @@ class ToggleActivity : ComponentActivity() {
         Log.i(TAG, "alarm-triggered wake; will toggle(enable=$enable) after screen-wake delay")
 
         Handler(Looper.getMainLooper()).postDelayed({
-            Log.i(TAG, "screen wake settled; invoking toggle")
-            WorkProfileToggler.toggle(this, enable)
+            lifecycleScope.launch {
+                val schedule = ScheduleStore(this@ToggleActivity).scheduleFlow.first()
+                if (!schedule.enabled || schedule.isActiveAt() != enable) {
+                    Log.i(TAG, "Delayed toggle cancelled: WorkPause is off or schedule changed")
+                    finish()
+                    return@launch
+                }
+                Log.i(TAG, "screen wake settled; invoking toggle")
+                WorkProfileToggler.toggle(this@ToggleActivity, enable)
+            }
         }, WAKE_SETTLE_DELAY_MS)
 
         Handler(Looper.getMainLooper()).postDelayed({

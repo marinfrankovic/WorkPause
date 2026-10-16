@@ -96,7 +96,6 @@ import com.worksched.data.ScheduleStore
 import com.worksched.profile.QuietModeBackend
 import com.worksched.profile.ResumeReconcileReceiver
 import com.worksched.profile.WorkProfileDetector
-import com.worksched.profile.WorkProfileToggler
 import com.worksched.service.WorkProfileA11yService
 import android.Manifest
 import android.content.pm.PackageManager
@@ -115,6 +114,8 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import android.text.format.DateFormat
 import android.util.Log
 import java.io.IOException
@@ -152,6 +153,8 @@ fun MainScreen() {
     }
     var schedule by rememberSaveable(stateSaver = scheduleSaver) { mutableStateOf(Schedule.default()) }
     var loaded by rememberSaveable { mutableStateOf(false) }
+    var ready by remember { mutableStateOf(false) }
+    var workPauseEnabled by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var quiet by remember { mutableStateOf<Boolean?>(null) }   // true = paused, false = on
     var present by remember { mutableStateOf(true) }
@@ -160,7 +163,6 @@ fun MainScreen() {
     var canExact by remember { mutableStateOf(canScheduleExact(ctx)) }
     var batteryOk by remember { mutableStateOf(isBatteryUnrestricted(ctx)) }
     var pendingResume by remember { mutableStateOf(false) }
-    var toggling by remember { mutableStateOf(false) }
     var savedFlash by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
@@ -187,10 +189,15 @@ fun MainScreen() {
     }
 
     LaunchedEffect(Unit) {
+        val saved = store.scheduleFlow.first()
+        workPauseEnabled = saved.enabled
         if (!loaded) {
-            schedule = store.scheduleFlow.first()
+            schedule = saved
             loaded = true
+        } else {
+            schedule = schedule.copy(enabled = saved.enabled)
         }
+        ready = true
         refresh()
         ResumeReconcileReceiver.reconcile(ctx)
         pendingResume = store.pendingResume()
@@ -202,24 +209,18 @@ fun MainScreen() {
         refresh(); scope.launch { pendingResume = store.pendingResume() }
     }
 
-    // A toggle that disables the buttons while in flight and shows exactly one toast.
-    fun doToggle(enable: Boolean) {
-        if (toggling) return
-        toggling = true
-        scope.launch {
-            val result = withContext(Dispatchers.Default) { WorkProfileToggler.toggle(ctx, enable) }
-            refresh()
-            snackbar.currentSnackbarData?.dismiss()
-            val msg = when {
-                !result -> "Could not change the work profile. Check Settings."
-                enable && silent -> "Resumed"
-                enable -> "Resuming · opening Quick Settings"
-                silent -> "Paused"
-                else -> "Pausing · opening Quick Settings"
-            }
-            toggling = false
-            snackbar.showSnackbar(msg)
+    suspend fun applySchedule(saved: Schedule) {
+        if (!saved.enabled) {
+            WorkProfileA11yService.instance?.cancelPendingToggle()
+            AlarmScheduler.cancelAll(ctx)
         }
+        store.setPendingResume(false, 0L)
+        pendingResume = false
+        ResumeRetryScheduler.cancel(ctx)
+        GeofenceManager.disarm(ctx)
+        store.setGeofenceArmed(false)
+        AlarmScheduler.scheduleAll(ctx, saved)
+        if (saved.enabled) AlarmScheduler.requestReconcile(ctx)
     }
 
     val fgLocationPerms = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -289,29 +290,52 @@ fun MainScreen() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             AppHeader(
-                scheduleEnabled = schedule.enabled,
-                canEdit = loaded && !saving,
-                onScheduleChange = { schedule = schedule.copy(enabled = it); savedFlash = false },
+                scheduleEnabled = workPauseEnabled,
+                canEdit = ready && !saving,
+                onScheduleChange = { enabled ->
+                    if (ready && !saving) {
+                        saving = true
+                        scope.launch {
+                            try {
+                                val saved = store.setEnabled(enabled)
+                                workPauseEnabled = saved.enabled
+                                schedule = schedule.copy(enabled = saved.enabled)
+                                applySchedule(saved)
+                            } catch (e: IOException) {
+                                Log.e("WorkPauseUI", "Could not change WorkPause state", e)
+                                snackbar.showSnackbar("Could not change WorkPause. Please try again.")
+                            } catch (e: SecurityException) {
+                                Log.e("WorkPauseUI", "Android blocked WorkPause setup", e)
+                                snackbar.showSnackbar("Android blocked setup. Review permissions in Settings.")
+                            } finally {
+                                saving = false
+                            }
+                        }
+                    }
+                },
                 onSetup = { showSetup = true }
+            )
+            if (ready) Text(
+                if (workPauseEnabled) "ON - following your saved schedule."
+                else "OFF - work apps stay as set on your phone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             ScheduleCard(
                 schedule = schedule,
                 savedFlash = savedFlash,
-                saving = saving || !loaded,
+                saving = saving || !ready,
                 onChange = { schedule = it; savedFlash = false },
                 onSave = {
                     val toSave = schedule
                     saving = true
                     scope.launch {
                         try {
-                            store.save(toSave)
-                            store.setPendingResume(false, 0L)
-                            ResumeRetryScheduler.cancel(ctx)
-                            GeofenceManager.disarm(ctx)
-                            store.setGeofenceArmed(false)
-                            AlarmScheduler.scheduleAll(ctx, toSave)
-                            AlarmScheduler.requestReconcile(ctx)
+                            val saved = store.saveScheduleEdits(toSave)
+                            workPauseEnabled = saved.enabled
+                            schedule = schedule.copy(enabled = saved.enabled)
+                            applySchedule(saved)
                             savedFlash = true
                         } catch (e: IOException) {
                             Log.e("WorkPauseUI", "Could not save schedule", e)
@@ -332,17 +356,13 @@ fun MainScreen() {
                         !present -> "No work profile found"
                         pendingResume -> "Waiting for unlock"
                         quiet == true -> "Work apps are paused"
-                        else -> "Work apps are on"
+                        quiet == false -> "Work apps are on"
+                        else -> "Work profile status unavailable"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)
                 )
-                if (present) {
-                    TextButton(enabled = !toggling, onClick = { doToggle(quiet == true) }) {
-                        Text(if (quiet == true) "Resume now" else "Pause now")
-                    }
-                }
             }
             if (needsSetup) TextButton(onClick = { showSetup = true }) { Text("Finish setup in Settings") }
             Spacer(Modifier.height(8.dp))
@@ -441,11 +461,11 @@ private fun AppHeader(
             modifier = Modifier.toggleable(
                 value = scheduleEnabled, enabled = canEdit, role = Role.Switch,
                 onValueChange = onScheduleChange
-            ).padding(horizontal = 8.dp),
+            ).semantics { contentDescription = "WorkPause" }.padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Auto", style = MaterialTheme.typography.labelMedium)
+            Text(if (scheduleEnabled) "ON" else "OFF", style = MaterialTheme.typography.labelMedium)
             Switch(checked = scheduleEnabled, enabled = canEdit, onCheckedChange = null)
         }
         Box {
@@ -546,8 +566,8 @@ private fun ScheduleCard(
             if (error != null) Text(error, color = sc.error, style = MaterialTheme.typography.bodySmall)
             Button(
                 modifier = Modifier.fillMaxWidth().height(50.dp), onClick = onSave, enabled = !saving && error == null
-            ) { Text(if (saving) "Saving..." else if (savedFlash) "Saved" else "Save") }
-            Text("Changes apply when you tap Save.", style = MaterialTheme.typography.bodySmall, color = sc.onSurfaceVariant)
+            ) { Text(if (saving) "Saving..." else if (savedFlash) "Schedule saved" else "Save schedule") }
+            Text("Daily changes apply when you save the schedule.", style = MaterialTheme.typography.bodySmall, color = sc.onSurfaceVariant)
         }
     }
     editingResume?.let { resume ->
@@ -907,7 +927,8 @@ private fun HelpDialog(onDismiss: () -> Unit) {
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 HelpPara("Daily behavior", "Select a weekday and choose Schedule, All day ON, or All day OFF. Schedule keeps work apps ON from the From time until the To time; an earlier To time means the next day. All day OFF takes priority at midnight over previous overnight hours.")
-                HelpPara("Copy and save", "Copy to other days replaces the selected days' behavior and times. Tap Save to apply every change. Turning off Auto and saving cancels automation without changing the current profile state.")
+                HelpPara("WorkPause ON or OFF", "ON follows your saved weekly schedule and applies the current scheduled state. OFF stops WorkPause's automatic changes and leaves work apps as set on your phone. The switch applies immediately, without saving. It does not change your phone's own settings or employer policies.")
+                HelpPara("Copy and save", "Copy to other days replaces the selected days' behavior and times. Save schedule applies daily edits only. The WorkPause switch uses the saved schedule, not unsaved edits. Saving while WorkPause is OFF does not turn it on.")
                 HelpPara("Silent mode", "After a one-time ADB grant (MODIFY_QUIET_MODE), the app pauses/resumes your work profile via a direct system call — instant, no screen, no Quick Settings panel. No root.")
                 HelpPara("Visible fallback", "Without the grant, it taps the Quick Settings ‘Work apps’ tile via an Accessibility service, which briefly shows the panel.")
                 HelpPara("Resume while locked", "Android may require the device or work profile to be unlocked. WorkPause retries within the active work hours; it cannot bypass a PIN or employer policy.")
