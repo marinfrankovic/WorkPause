@@ -172,7 +172,7 @@ All day OFF; review overnight schedules after updating. Turning off the
 Saving an enabled schedule also applies the current scheduled state.
 
 The design is inspired by Samsung's simple settings layouts; it does not use proprietary
-Samsung components and is not a claim of One UI 9 compatibility.
+Samsung components or imply Samsung endorsement.
 
 Accessibility is an optional, visible fallback, not a requirement for the silent backend.
 If Android shows a confirmation during this fallback, confirm it and close Quick Settings
@@ -233,10 +233,13 @@ managed independently from upstream.
 - The inherited external testing hook has been removed. Internal retry broadcasts are
   non-exported, accessibility is restricted to System UI, and generic confirmation
   buttons are no longer clicked automatically.
-- This is an initial preview, not a claim of verified compatibility with Samsung or Intune.
-- Installation and setup readiness were checked on a **Samsung Galaxy S24 Ultra**.
-  Actual profile switching, locked-device automation, and One UI 9 / enterprise
-  compatibility remain unverified. See the [verification record](docs/VERIFICATION.md).
+- This is an initial preview, not a general Samsung or enterprise compatibility certification.
+- **User-confirmed on Samsung Galaxy S24 Ultra with One UI 9:** the owner personally
+  tested WorkPause 1.0.2 and reports that it **works as expected**.
+  Installation and setup readiness were also checked independently. Individual
+  functional scenarios were not recorded; locked-device resume, separate work-profile
+  credentials, and Intune / Knox compatibility remain unverified.
+  See the [verification record](docs/VERIFICATION.md).
 
 ## Website
 
