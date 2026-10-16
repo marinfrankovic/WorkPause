@@ -1,13 +1,32 @@
 <!-- Modified for WorkPause: replace inherited claims with this fork's actual verification status. -->
 # WorkPause verification
 
-## Physical devices: not tested
+## Physical phone: installation and readiness checked
 
-**WorkPause has not been verified on a real phone.** In particular, there is no
-verified result for the Samsung Galaxy S24 Ultra running One UI 9.
+On **2026-10-16**, WorkPause 1.0.2 (code 3) was installed on the personal side of a
+**Samsung Galaxy S24 Ultra (SM-S928B)**. The phone reported Android SDK **37**.
+The One UI version was not independently recorded.
 
-There is also no WorkPause-specific verification of Intune, Knox, employer compliance,
-separate work-profile credentials, or Samsung background restrictions.
+| Phone check | Result |
+|---|---|
+| Published APK checksum | Matched the verified 1.0.2 release asset |
+| Installation and foreground launch | Passed |
+| Existing managed work profile | Detected by Android and by WorkPause |
+| Silent-control permission | `MODIFY_QUIET_MODE` granted to the personal-side app |
+| App's Silent control status | Active |
+| Exact alarms | Allowed, confirmed in WorkPause Settings |
+| Battery optimization exemption | Not enabled; unrestricted battery use recommended |
+| Main screen status during readiness check | Waiting for unlock |
+| Non-disruptive check | Work-profile flags unchanged before and after inspecting Settings |
+| Actual pause/resume and scheduled switching | Not attempted |
+| Locked-device or separate work-profile credential handling | Not tested |
+
+No schedule was saved and the WorkPause switch was not changed during the readiness
+check. Permission and readiness checks do **not** prove that silent switching works.
+Actual switching would interrupt work apps and was left untested without confirmation.
+
+There is no WorkPause-specific verification of Intune, Knox, employer compliance,
+One UI 9 behavior, separate work-profile credentials, or Samsung background restrictions.
 Testing performed on the original application must not be presented as testing of WorkPause.
 
 ## WorkPause 1.0.2 preview
@@ -23,6 +42,7 @@ Testing performed on the original application must not be presented as testing o
 | Removed testing entry point | TEST_FIRE absent from compiled code; invoking old action creates no test PendingIntent |
 | Internal retry receiver | Non-exported in the packaged manifest |
 | Pixel Android 15 emulator installation and foreground launch | Passed with the signed release APK |
+| Galaxy S24 Ultra installation and setup readiness | Passed with limitations recorded above; actual switching not tested |
 | Compact scheduler UI | Passed: single-row header; no repeated weekday/weekly heading |
 | Single WorkPause ON/OFF switch | Passed: Auto, Resume now, and Pause now absent |
 | Immediate ON/OFF persistence | Passed: both states survive process restart without Save |
@@ -36,7 +56,7 @@ Testing performed on the original application must not be presented as testing o
 | Work-profile pause/resume on a physical device | Not tested |
 | Locked-device resume on a physical device | Not tested |
 | Location-triggered resume on a physical device | Not tested |
-| Samsung S24 Ultra / One UI 9 compatibility | Not tested |
+| Samsung S24 Ultra / One UI 9 functional compatibility | Not established by installation/readiness checks |
 
 The single-switch UI checks were performed on the signed 1.0.2 APK. Original daily
 rules and switch state were restored after testing. The README screenshot was

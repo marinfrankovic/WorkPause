@@ -10,6 +10,7 @@
 
 **[Latest release: WorkPause 1.0.2 Preview](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.2)**
  · **[Download signed APK](https://github.com/marinfrankovic/WorkPause/releases/download/v1.0.2/WorkPause-1.0.2.apk)**
+ · **[Website](https://marinfrankovic.github.io/WorkPause/)**
 
 <img src="docs/workpause-icon.svg" width="128" height="128" alt="WorkPause icon">
 
@@ -233,8 +234,26 @@ managed independently from upstream.
   non-exported, accessibility is restricted to System UI, and generic confirmation
   buttons are no longer clicked automatically.
 - This is an initial preview, not a claim of verified compatibility with Samsung or Intune.
-- **Not tested on a real phone**, including the Samsung Galaxy S24 Ultra / One UI 9.
-  See the [verification record](docs/VERIFICATION.md) for the checks actually performed.
+- Installation and setup readiness were checked on a **Samsung Galaxy S24 Ultra**.
+  Actual profile switching, locked-device automation, and One UI 9 / enterprise
+  compatibility remain unverified. See the [verification record](docs/VERIFICATION.md).
+
+## Website
+
+The [WorkPause website](https://marinfrankovic.github.io/WorkPause/) is a static,
+responsive GitHub Pages site. Its source is in [site](site); artwork and the app
+screenshot are shared with this documentation. There are no third-party scripts,
+analytics integrations, external fonts, or package dependencies.
+
+To preview locally with Node.js 18+ and Python 3:
+
+```powershell
+node .\tools\build-site.mjs
+python -m http.server 8080 --bind 127.0.0.1 --directory .site-build
+```
+
+Open `http://127.0.0.1:8080`. The Pages workflow builds and deploys changes to the
+website, shared artwork, screenshot, or site builder after they reach `main`.
 
 ## Artwork
 

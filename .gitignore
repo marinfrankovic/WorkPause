@@ -3,6 +3,7 @@
 .gradle/
 build/
 captures/
+.site-build/
 
 # Local config (machine-specific; never commit)
 local.properties
