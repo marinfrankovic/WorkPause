@@ -247,8 +247,9 @@ managed independently from upstream.
 
 The [WorkPause website](https://marinfrankovic.github.io/WorkPause/) is a static,
 responsive GitHub Pages site. Its source is in [site](site); artwork and the app
-screenshot are shared with this documentation. There are no third-party scripts,
-analytics integrations, external fonts, or package dependencies.
+screenshot are shared with this documentation. The website uses Google Analytics
+(`G-TMNRPH563S`) to measure website traffic; this tag is not added to the Android app.
+There are no external fonts or build package dependencies.
 
 To preview locally with Node.js 18+ and Python 3:
 
