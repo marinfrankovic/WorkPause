@@ -236,9 +236,11 @@ managed independently from upstream.
 - This is an initial preview, not a general Samsung or enterprise compatibility certification.
 - **User-confirmed on Samsung Galaxy S24 Ultra with One UI 9:** the owner personally
   tested WorkPause 1.0.2 and reports that it **works as expected**.
-  Installation and setup readiness were also checked independently. Individual
-  functional scenarios were not recorded; locked-device resume, separate work-profile
-  credentials, and Intune / Knox compatibility remain unverified.
+  Installation and setup readiness were also checked independently. The owner also
+  reports needing the **work-profile PIN when the profile turns back on**. This is
+  expected: silent control requests pause/resume but cannot unlock the profile or
+  bypass its PIN. Other locked-device / credential scenarios and Intune / Knox
+  compatibility remain unverified; individual functional scenarios were not recorded.
   See the [verification record](docs/VERIFICATION.md).
 
 ## Website

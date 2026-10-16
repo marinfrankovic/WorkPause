@@ -145,7 +145,7 @@
         <div class="verification-copy">
           <p>The current app passed <strong>31 automated tests</strong>, build and lint checks, release-signature checks, and emulator UI smoke tests.</p>
           <p><strong>User-confirmed on Samsung Galaxy S24 Ultra with One UI 9:</strong> the owner personally tested WorkPause 1.0.2 and reports that it works as expected. Installation and setup readiness were also checked independently.</p>
-          <p>This is one user's result, not a general compatibility certification. Individual functional scenarios were not recorded; locked-device resume, separate work-profile credentials, and Intune / Knox compatibility remain unverified. WorkPause cannot bypass credentials or employer policy.</p>
+          <p>The owner also reports needing the <strong>work-profile PIN when the profile turns back on</strong>. This is expected: silent control does not unlock the profile or bypass credentials. This is one user's result, not a general compatibility certification. Other locked-device / credential scenarios and Intune / Knox compatibility remain unverified.</p>
           <a class="text-link" href="https://github.com/marinfrankovic/WorkPause/blob/main/docs/VERIFICATION.md">Read the full validation record <span aria-hidden="true">&#8599;</span></a>
         </div>
       </div>
@@ -157,7 +157,7 @@
         <details><summary>Does WorkPause OFF turn my work apps off?</summary><p>No. It stops WorkPause's automatic changes and leaves the current work-profile state untouched. Your phone's normal controls remain available. Your daily rules are kept for later.</p></details>
         <details><summary>Do I need an existing work profile?</summary><p>Yes. WorkPause schedules an existing Android work profile; it does not create one. Samsung Secure Folder is not a substitute for a managed work profile.</p></details>
         <details><summary>Can I install without a computer?</summary><p>Yes. Download the APK on your phone and follow Android's installation prompts. Silent control still needs the separate one-time ADB grant from a computer. See the setup guide for the optional visible fallback and sideloading restrictions.</p></details>
-        <details><summary>What happens when my phone is locked?</summary><p>Android may require the device or work profile to be unlocked before it can resume. WorkPause implements deferred retries within the active work window, but real-device locked-resume behavior remains unverified. It cannot bypass a PIN.</p></details>
+        <details><summary>Can WorkPause bypass the phone or work-profile PIN?</summary><p>No. Silent control requests pause/resume without operating Quick Settings; it does not unlock the profile. When Android or employer policy requires the PIN, you must enter it before work apps become available. WorkPause implements deferred retries within the active work window, but other real-device locked-resume scenarios remain unverified.</p></details>
         <details><summary>Is it free and open source?</summary><p>Yes. WorkPause is an independently maintained Apache-2.0 fork of Work Profile Scheduler. The source, release APKs, license, and original attribution are available on GitHub.</p></details>
       </div>
     </section>
