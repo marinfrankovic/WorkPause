@@ -7,4 +7,22 @@
 
     <string name="notif_channel_name">Schedule events</string>
     <string name="notif_channel_desc">Notifies when the scheduler fires.</string>
+    <string name="unlock_channel_name">Work profile unlock reminders</string>
+    <string name="unlock_channel_description">A tappable reminder after scheduled resume. Banners depend on Android notification settings.</string>
+    <string name="unlock_notification_title">Unlock your work profile</string>
+    <string name="unlock_notification_text">Work time has started. Tap to open a work app and enter your work PIN if Android asks.</string>
+    <string name="work_ready_notification_title">Work profile is scheduled ON</string>
+    <string name="work_ready_notification_text">Android accepted the resume request. If work apps still need your work PIN, tap to open one.</string>
+    <string name="open_work_apps">Open work apps</string>
+    <string name="unlock_picker_description">Choose a work app below. Android handles any required work PIN; WorkPause never reads it. After unlocking, the selected app opens.</string>
+    <string name="unlock_choose_app">Choose the work app you want to open. If the profile is still paused, tap Resume work profile first.</string>
+    <string name="unlock_retry">Resume work profile</string>
+    <string name="open_workpause">Open WorkPause settings</string>
+    <string name="unlock_no_longer_needed">This reminder is no longer active. WorkPause is off, work hours have ended, or the profile has unlocked. Use your normal work-app icons.</string>
+    <string name="unlock_no_apps">No accessible work-app icons were returned by Android. Try Resume work profile, or open a work app from your phone launcher.</string>
+    <string name="unlock_apps_denied">Android or your employer blocked access to work-app icons. Open a work app from your phone launcher instead.</string>
+    <string name="unlock_use_phone_controls">Silent control is not available. Use your phone controls to resume the work profile, then open a work app.</string>
+    <string name="unlock_wait_for_android">Android has not finished resuming the profile. Complete any Android credential screen, then return and try again if needed.</string>
+    <string name="unlock_launch_failed">Android could not open this work app. It may have been removed or restricted. Use the work-app icon in your phone launcher.</string>
+    <string name="unlock_location_not_verified">Your saved location rule could not be verified. WorkPause will not resume the profile from this reminder.</string>
 </resources>

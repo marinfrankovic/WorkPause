@@ -19,13 +19,10 @@ import android.util.Log
  * pauses/resumes the work profile in ~50 ms with no UI, no screen wake, and
  * without touching profile ownership (Intune enrolment stays intact).
  *
- * Resume-while-locked: the work profile's apps live in credential-encrypted (CE)
- * storage whose keys exist only after the device is unlocked. Resuming while
- * locked therefore needs the user credential. The 2-arg call would queue a
- * credential prompt for the next unlock; instead we pass
- * QUIET_MODE_DISABLE_ONLY_IF_CREDENTIAL_NOT_REQUIRED so the call does nothing and
- * returns false when locked. The caller persists a pending-resume flag and retries
- * on unlock (see ResumeReconcileReceiver) — completing silently once CE keys exist.
+ * On Android 11+, scheduled resumes use the credential-not-required flag whether
+ * the phone is locked or unlocked. If credentials are needed, the caller retries
+ * silently and offers a notification. Only an explicit action in the visible
+ * unlock picker uses the prompting overload.
  */
 object QuietModeBackend {
     private const val TAG = "QuietModeBackend"
@@ -56,20 +53,14 @@ object QuietModeBackend {
         }
         return try {
             if (enable) {
-                // Resume = disable quiet mode.
-                //  - Device UNLOCKED (e.g. a manual tap): use the plain 2-arg call so it resumes
-                //    immediately. The device credential is already in memory (unified lock), so no
-                //    PIN prompt appears.
-                //  - Device LOCKED (a scheduled resume firing while asleep): use the
-                //    credential-not-required flag so it does nothing & returns false instead of
-                //    queuing a PIN prompt; the caller defers and retries on unlock.
                 val locked = isDeviceLocked(context)
-                val ok = if (locked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // The API also returns false for an already-running profile, not just a credential challenge.
+                val ok = !um.isQuietModeEnabled(workUser) || if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     um.requestQuietModeEnabled(false, workUser, UserManager.QUIET_MODE_DISABLE_ONLY_IF_CREDENTIAL_NOT_REQUIRED)
                 } else {
                     um.requestQuietModeEnabled(false, workUser)
                 }
-                Log.i(TAG, "resume: requestQuietModeEnabled(quiet=false) returned $ok (locked=$locked)")
+                Log.i(TAG, "resume: profile ON request satisfied=$ok (deviceLocked=$locked)")
                 ok
             } else {
                 // Pause = enable quiet mode. Always succeeds, no credential.
@@ -82,6 +73,19 @@ object QuietModeBackend {
             false
         } catch (t: Throwable) {
             Log.w(TAG, "toggle failed: $t")
+            false
+        }
+    }
+
+    fun resumeFromUserAction(context: Context): Boolean {
+        val workUser = WorkProfileDetector(context).workProfileHandle() ?: run {
+            Log.w(TAG, "Cannot request work credentials: no work profile")
+            return false
+        }
+        return try {
+            context.getSystemService(UserManager::class.java).requestQuietModeEnabled(false, workUser)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Android denied the user-initiated work-profile resume", e)
             false
         }
     }

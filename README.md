@@ -1,15 +1,15 @@
 <!-- Modified for WorkPause: independent project documentation. -->
 # WorkPause
 
-[![Version 1.0.2 Preview](https://img.shields.io/badge/Version-1.0.2_Preview-2C5CC5)](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.2)
+[![Version 1.0.3 Preview](https://img.shields.io/badge/Version-1.0.3_Preview-2C5CC5)](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.3)
 [![Android 10+](https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white)](#requirements-and-setup)
 [![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)](app/src/main/java/com/worksched)
 [![Jetpack Compose](https://img.shields.io/badge/Jetpack_Compose-4285F4?logo=jetpackcompose&logoColor=white)](app/src/main/java/com/worksched/ui)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Build](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml/badge.svg)](https://github.com/marinfrankovic/WorkPause/actions/workflows/build.yml)
 
-**[Latest release: WorkPause 1.0.2 Preview](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.2)**
- · **[Download signed APK](https://github.com/marinfrankovic/WorkPause/releases/download/v1.0.2/WorkPause-1.0.2.apk)**
+**[Latest release: WorkPause 1.0.3 Preview](https://github.com/marinfrankovic/WorkPause/releases/tag/v1.0.3)**
+ · **[Download signed APK](https://github.com/marinfrankovic/WorkPause/releases/download/v1.0.3/WorkPause-1.0.3.apk)**
  · **[Website](https://marinfrankovic.github.io/WorkPause/)**
 
 <img src="docs/workpause-icon.svg" width="128" height="128" alt="WorkPause icon">
@@ -30,9 +30,51 @@ It uses Android alarms rather than a continuous scheduler service.
 - Compact single-row header with the WorkPause switch and Settings gear.
 - Silent control after a one-time ADB permission grant.
 - Deferred resume when Android requires the device or work profile to be unlocked.
+- Actionable unlock reminders that open Android's work-PIN flow or a work-app picker.
 - Material 3 interface and adaptive, round, and themed launcher icons.
 
+> **Notification setup is required for unlock reminders.** Open WorkPause
+> **Settings → Unlock reminders**, allow notifications, and review the **Work profile
+> unlock reminders** channel in Android settings. Enable banners/pop-ups there if
+> desired. Scheduling still works with notifications blocked, but reminders cannot appear.
+> See [notification setup](#set-up-unlock-notifications-required-for-reminders).
+
 ## Using the scheduler
+
+### Unlock reminders: new in 1.0.3
+
+Version **1.0.3** (version code **5**) adds **Unlock reminders** in Settings.
+It updates over 1.0.2 and the local 1.0.3-preview build without uninstalling.
+
+- Allow WorkPause notifications, then allow banners for **Work profile unlock reminders**
+  in Android notification settings if desired. Do Not Disturb or Samsung settings may
+  suppress banners; the notification shade remains the normal place to look.
+- Following a resume request, tap **Open work apps**, then choose the work app to open.
+  Android handles any required PIN and then opens that app. WorkPause never reads the PIN.
+- If Android reports locked work-profile storage, the reminder says **Unlock your work
+  profile**. Otherwise it says **Work profile is scheduled ON**, with a conditional PIN
+  explanation: unlocked storage is not proof that a separate work-app challenge is unlocked.
+- A profile that was already running with unlocked storage does not generate a new
+  reminder just because WorkPause reconciles its schedule.
+- Reminders are hidden while the phone is locked. They are cleared when WorkPause is
+  turned OFF, work hours end, the work profile is removed, or Android reports the managed
+  profile unlocked while WorkPause is running. Android sends that unlock event only to
+  runtime-registered receivers; if the process was stopped, a reminder may remain until
+  dismissed or refreshed. Swiping hides the current notification, but a pending resume
+  retry may show it again. Canceling PIN entry does not deliberately clear the reminder.
+- If no accessible work apps are listed, or employer policy blocks access, use the
+  phone's normal work-app launcher. **Resume work profile** retries from the visible
+  picker if the profile is still paused and silent-control permission is available.
+
+On Android 11+, scheduled resumes and retries do not request automatic PIN popups.
+Tapping the notification can request Android credentials if the profile is still
+paused; otherwise choose a work app in the picker. There are no lock-screen launches.
+Android 10 retains the older system resume API, which may show its own credential UI.
+The 1.0.3-preview build was installed and launched on the owner's Galaxy S24 Ultra
+with permissions retained. Its Samsung PIN and banner behavior still needs functional
+testing; prior 1.0.2 results do not verify the new reminder flow.
+
+### Daily rules and master switch
 
 The compact top bar contains the app name, one **ON/OFF** switch, and Settings gear.
 There are no separate Auto, Resume, or Pause controls.
@@ -67,7 +109,7 @@ WorkPause is OFF does not turn it on or change the work profile.
 ## App identity
 
 - Application ID: `io.github.marinfrankovic.workpause`
-- Current version: `1.0.2` (version code `3`)
+- Current version: `1.0.3` (version code `5`), release title **Preview**
 - Repository: [marinfrankovic/WorkPause](https://github.com/marinfrankovic/WorkPause)
 
 WorkPause installs separately from the original application. Settings and permission
@@ -83,7 +125,7 @@ Folder is not a substitute for a work profile.
 
 ### Install with ADB
 
-1. Download the signed `WorkPause-1.0.2.apk` from this repository's
+1. Download the signed `WorkPause-1.0.3.apk` from this repository's
    [Releases](https://github.com/marinfrankovic/WorkPause/releases) page.
    Preview versions may be marked **Pre-release**. Do not install APKs from untrusted mirrors.
 2. Install Google's [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools)
@@ -94,12 +136,12 @@ Folder is not a substitute for a work profile.
 
    ```powershell
    adb devices
-   adb install -r "C:\path\to\WorkPause-1.0.2.apk"
+   adb install -r "C:\path\to\WorkPause-1.0.3.apk"
    ```
 
    Replace the example path with your downloaded APK. The device should appear as
    `device`, not `unauthorized`. If multiple devices are connected, use
-   `adb -s DEVICE_SERIAL install -r "C:\path\to\WorkPause-1.0.2.apk"`.
+   `adb -s DEVICE_SERIAL install -r "C:\path\to\WorkPause-1.0.3.apk"`.
    In PowerShell, use `.\adb.exe` instead of `adb` if running from the Platform Tools
    folder without adding it to `PATH`.
 5. Open WorkPause from the launcher.
@@ -110,7 +152,7 @@ To check the installed version:
 adb shell dumpsys package io.github.marinfrankovic.workpause | Select-String "versionCode=|versionName="
 ```
 
-Expect `versionName=1.0.2` and `versionCode=3`. On the phone, you can also check
+Expect `versionName=1.0.3` and `versionCode=5`. On the phone, you can also check
 **Settings → Apps → WorkPause → App info** (the exact layout varies by device).
 
 The `-r` option updates an existing installation without clearing its data, provided
@@ -155,10 +197,12 @@ still apply.
    uninstalling or reinstalling from scratch requires granting it again.
 2. Open **Settings** using the gear. Status cards explain what needs attention.
    Expand **Set up with ADB** for instructions and a **Copy command** button.
-3. Select a weekday and choose **All day OFF**, **All day ON**, or **Schedule**.
+3. Set up **Settings → Unlock reminders** as described below. This is separate from
+   the ADB grant, exact alarms, and battery settings.
+4. Select a weekday and choose **All day OFF**, **All day ON**, or **Schedule**.
    For Schedule, set **From** and **To** to define the ON interval.
    Repeat for other days or use **Copy to other days**, then tap **Save schedule**.
-4. In Settings, allow **Exact alarms** for precise timing. Unrestricted battery use is
+5. In Settings, allow **Exact alarms** for precise timing. Unrestricted battery use is
    recommended to reduce delays; these permissions do not grant profile control.
    Turn **WorkPause ON** when you are ready to follow your saved schedule; no Save
    is required for the switch.
@@ -178,6 +222,28 @@ Accessibility is an optional, visible fallback, not a requirement for the silent
 If Android shows a confirmation during this fallback, confirm it and close Quick Settings
 yourself; WorkPause does not automatically accept dialogs.
 The app cannot bypass a device or work-profile PIN. Employer policy can restrict its use.
+
+### Set up unlock notifications (required for reminders)
+
+1. In WorkPause, open **Settings → Unlock reminders → Allow reminder notifications**.
+   Accept Android's notification permission prompt if shown. If permission was denied
+   earlier, use the system settings opened by the app to allow WorkPause notifications.
+2. Tap **Review reminder notifications** and enable **Work profile unlock reminders**
+   in Android's notification settings. On Samsung, review this channel's alert and
+   pop-up/banner options too; labels and category visibility vary by One UI version.
+   Allowing the app's notifications alone does not guarantee a heads-up banner.
+3. Check Do Not Disturb and other notification restrictions. The notification shade
+   is the normal place to find the reminder; no lock-screen launch or wake is requested.
+
+The app shows **Allowed** or **Blocked** for reminders. This status does not certify
+Samsung's banner settings. Notification denial does not disable profile scheduling.
+The separate low-importance status channel is not the unlock-reminder channel.
+
+After a scheduled resume, tap the reminder or **Open work apps**. If the profile is
+still paused, Android may ask for its PIN immediately; otherwise choose a work app
+so Android can enforce its challenge. If you cancel, the picker remains available
+and **Resume work profile** is an explicit retry. If Android/policy blocks access,
+use the phone's normal work-app icons. WorkPause never collects or bypasses the PIN.
 
 ## Build and test
 
@@ -224,16 +290,23 @@ off-device backup of the keystore and a separately secured password before distr
 Increase `versionCode` for every published update. Version names and release tags are
 managed independently from upstream.
 
+For each release, update the Gradle version, current-version references in this README,
+the website, and the [verification record](docs/VERIFICATION.md). Run tests and lint,
+build with the existing release key, verify the package/version/signature, and publish
+the APK plus `SHA256SUMS.txt` on the matching GitHub tag. Keep older verification entries
+historical; do not present installation checks as proof of the Samsung PIN flow.
+
 ## Status and limitations
 
 - Emulator installation and appearance do not establish Samsung or enterprise compatibility.
-- The current preview passed 31 unit tests, Android debug lint, release-signature checks,
-  and emulator UI smoke checks. The emulator has no managed work profile, so this does
-  not verify real profile toggling.
+- The current preview passed 43 unit tests, Android debug lint, and release-signature
+  checks. The unlock-reminder implementation was smoke-tested with a disposable managed
+  profile and work PIN on an Android 15 emulator: pause/resume reconciliation, notification
+  tap, PIN cancel/retry, unlock cleanup, and OFF cleanup were exercised.
 - The inherited external testing hook has been removed. Internal retry broadcasts are
   non-exported, accessibility is restricted to System UI, and generic confirmation
   buttons are no longer clicked automatically.
-- This is an initial preview, not a general Samsung or enterprise compatibility certification.
+- This remains a preview, not a general Samsung or enterprise compatibility certification.
 - **User-confirmed on Samsung Galaxy S24 Ultra with One UI 9:** the owner personally
   tested WorkPause 1.0.2 and reports that it **works as expected**.
   Installation and setup readiness were also checked independently. The owner also
@@ -242,6 +315,9 @@ managed independently from upstream.
   bypass its PIN. Other locked-device / credential scenarios and Intune / Knox
   compatibility remain unverified; individual functional scenarios were not recorded.
   See the [verification record](docs/VERIFICATION.md).
+- **1.0.3-preview phone update:** installed and opened on the same Galaxy S24 Ultra on
+  2026-10-20; silent-control and notification permissions were retained. This verifies
+  installation, not Samsung reminder delivery, heads-up display, or the new PIN flow.
 
 ## Website
 

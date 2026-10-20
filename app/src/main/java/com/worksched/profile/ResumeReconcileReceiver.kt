@@ -36,12 +36,18 @@ class ResumeReconcileReceiver : BroadcastReceiver() {
         private const val TAG = "ResumeReconcile"
 
         suspend fun reconcile(context: Context, retryAttempt: Int? = null) {
+            reconcilePending(context, retryAttempt)
+            WorkProfileUnlockNotifier.refresh(context)
+        }
+
+        private suspend fun reconcilePending(context: Context, retryAttempt: Int?) {
             val store = ScheduleStore(context)
             if (!store.pendingResume()) return
             if (store.pendingResumeDeadline() <= System.currentTimeMillis()) {
                 Log.i(TAG, "Pending resume expired; cancelling")
                 store.setPendingResume(false, 0L)
                 ResumeRetryScheduler.cancel(context)
+                WorkProfileUnlockNotifier.cancel(context)
                 return
             }
             if (QuietModeBackend.isDeviceLocked(context)) {
@@ -76,7 +82,7 @@ class ResumeReconcileReceiver : BroadcastReceiver() {
                 val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 nm.notify(1005, NotificationCompat.Builder(context, WorkSchedApp.CHANNEL_ID)
                     .setContentTitle(context.getString(R.string.app_name))
-                    .setContentText("Work profile resumed")
+                    .setContentText("Work-profile resume accepted. A work PIN may still be needed.")
                     .setSmallIcon(android.R.drawable.ic_dialog_info)
                     .setAutoCancel(true)
                     .build())

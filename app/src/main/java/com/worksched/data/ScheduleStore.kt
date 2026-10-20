@@ -23,6 +23,7 @@ class ScheduleStore(private val context: Context) {
     private val pendingResumeKey = booleanPreferencesKey("pending_resume")
     private val pendingResumeDeadlineKey = longPreferencesKey("pending_resume_deadline")
     private val geofenceArmedKey = booleanPreferencesKey("geofence_armed")
+    private val unlockReminderKey = booleanPreferencesKey("unlock_reminder_requested")
     private val json = Json { ignoreUnknownKeys = true }
 
     private fun decodeSchedule(raw: String?): Schedule =
@@ -53,11 +54,19 @@ class ScheduleStore(private val context: Context) {
             prefs[scheduleKey] = json.encodeToString(schedule)
             prefs[pendingResumeKey] = false
             prefs[pendingResumeDeadlineKey] = 0L
+            if (!enabled) prefs[unlockReminderKey] = false
         }
         return decodeSchedule(saved[scheduleKey])
     }
 
     // ---- pending-resume state (deferred resume while device locked) ----
+
+    suspend fun unlockReminderRequested(): Boolean =
+        context.dataStore.data.first()[unlockReminderKey] ?: false
+
+    suspend fun setUnlockReminderRequested(requested: Boolean) {
+        context.dataStore.edit { it[unlockReminderKey] = requested }
+    }
 
     val pendingResumeFlow: Flow<Boolean> = context.dataStore.data.map { it[pendingResumeKey] ?: false }
 

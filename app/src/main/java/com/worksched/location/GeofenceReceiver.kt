@@ -13,6 +13,7 @@ import com.worksched.WorkSchedApp
 import com.worksched.alarm.ResumeRetryScheduler
 import com.worksched.data.ScheduleStore
 import com.worksched.profile.WorkProfileToggler
+import com.worksched.profile.WorkProfileUnlockNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -22,7 +23,7 @@ import kotlinx.coroutines.launch
  * Fires when the device enters the saved geofence (the OS delivers this — no polling). Resumes the
  * work profile, provided an arrival-resume is still armed and we're still inside today's on-window.
  * Composes with the locked-resume defer: if the device is locked on arrival, the resume defers and
- * completes on the next unlock (no second passcode).
+ * retries after unlock; a separate work-profile PIN may still be needed.
  */
 class GeofenceReceiver : BroadcastReceiver() {
 
@@ -68,9 +69,10 @@ class GeofenceReceiver : BroadcastReceiver() {
                     val deadline = minOf(System.currentTimeMillis() + DEFER_WINDOW_MS, LocationGate.resumeWindowEndMillis(schedule))
                     store.setPendingResume(true, deadline)
                     ResumeRetryScheduler.schedule(appCtx, attempt = 0)
-                    notify(appCtx, "Work apps will resume when you next unlock the phone.")
+                    notify(appCtx, "Work profile needs unlocking. Use the unlock reminder after unlocking your phone.")
                     Log.i(TAG, "arrival resume deferred (device locked)")
                 }
+                WorkProfileUnlockNotifier.refresh(appCtx)
             } finally {
                 pending.finish()
             }

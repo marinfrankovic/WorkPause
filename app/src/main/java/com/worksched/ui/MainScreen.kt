@@ -129,6 +129,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.core.content.ContextCompat
 import com.worksched.location.LocationGate
+import com.worksched.profile.WorkProfileUnlockNotifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -162,7 +163,9 @@ fun MainScreen() {
     var a11yOn by remember { mutableStateOf(isA11yEnabled(ctx)) }
     var canExact by remember { mutableStateOf(canScheduleExact(ctx)) }
     var batteryOk by remember { mutableStateOf(isBatteryUnrestricted(ctx)) }
+    var notificationsOk by remember { mutableStateOf(WorkProfileUnlockNotifier.notificationsEnabled(ctx)) }
     var pendingResume by remember { mutableStateOf(false) }
+    var unlockReminder by remember { mutableStateOf(false) }
     var savedFlash by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
@@ -176,6 +179,10 @@ fun MainScreen() {
         locationFgOk = LocationGate.hasForegroundLocation(ctx)
         locationBgOk = LocationGate.hasBackgroundLocation(ctx)
     }
+    val notificationPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsOk = WorkProfileUnlockNotifier.notificationsEnabled(ctx)
+        scope.launch { WorkProfileUnlockNotifier.refresh(ctx) }
+    }
 
     fun refresh() {
         present = detector.isWorkProfilePresent()
@@ -184,6 +191,7 @@ fun MainScreen() {
         a11yOn = isA11yEnabled(ctx)
         canExact = canScheduleExact(ctx)
         batteryOk = isBatteryUnrestricted(ctx)
+        notificationsOk = WorkProfileUnlockNotifier.notificationsEnabled(ctx)
         locationFgOk = LocationGate.hasForegroundLocation(ctx)
         locationBgOk = LocationGate.hasBackgroundLocation(ctx)
     }
@@ -201,15 +209,24 @@ fun MainScreen() {
         refresh()
         ResumeReconcileReceiver.reconcile(ctx)
         pendingResume = store.pendingResume()
+        unlockReminder = store.unlockReminderRequested()
         while (true) {
-            delay(30_000); refresh(); pendingResume = store.pendingResume()
+            delay(30_000); refresh()
+            pendingResume = store.pendingResume()
+            unlockReminder = store.unlockReminderRequested()
         }
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        refresh(); scope.launch { pendingResume = store.pendingResume() }
+        refresh(); scope.launch {
+            WorkProfileUnlockNotifier.refresh(ctx)
+            pendingResume = store.pendingResume()
+            unlockReminder = store.unlockReminderRequested()
+        }
     }
 
     suspend fun applySchedule(saved: Schedule) {
+        WorkProfileUnlockNotifier.cancel(ctx)
+        unlockReminder = false
         if (!saved.enabled) {
             WorkProfileA11yService.instance?.cancelPendingToggle()
             AlarmScheduler.cancelAll(ctx)
@@ -278,7 +295,7 @@ fun MainScreen() {
     }
 
     val locationNeedsSetup = schedule.locationEnabled && (!locationFgOk || !locationBgOk)
-    val needsSetup = !silent || !canExact || !batteryOk || locationNeedsSetup
+    val needsSetup = !silent || !canExact || !batteryOk || !notificationsOk || locationNeedsSetup
 
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { inner ->
         Column(
@@ -354,6 +371,7 @@ fun MainScreen() {
                 Text(
                     when {
                         !present -> "No work profile found"
+                        unlockReminder -> "Work profile may need your work PIN"
                         pendingResume -> "Waiting for unlock"
                         quiet == true -> "Work apps are paused"
                         quiet == false -> "Work apps are on"
@@ -364,6 +382,9 @@ fun MainScreen() {
                     modifier = Modifier.weight(1f)
                 )
             }
+            if (unlockReminder) TextButton(onClick = {
+                ctx.startActivity(Intent(ctx, com.worksched.profile.UnlockWorkProfileActivity::class.java))
+            }) { Text("Open work apps") }
             if (needsSetup) TextButton(onClick = { showSetup = true }) { Text("Finish setup in Settings") }
             Spacer(Modifier.height(8.dp))
         }
@@ -377,6 +398,17 @@ fun MainScreen() {
             SetupSheet(
                 profilePresent = present,
                 silent = silent, a11yOn = a11yOn, canExact = canExact, batteryOk = batteryOk,
+                notificationsOk = notificationsOk,
+                onAllowNotifications = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        notificationPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        ctx.startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                            .putExtra(Settings.EXTRA_CHANNEL_ID, WorkProfileUnlockNotifier.CHANNEL_ID))
+                    }
+                },
                 onOpenA11y = { ctx.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
                 onOpenExact = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
@@ -798,6 +830,7 @@ private fun SetupBanner(silent: Boolean, canExact: Boolean, batteryOk: Boolean, 
 private fun SetupSheet(
     profilePresent: Boolean,
     silent: Boolean, a11yOn: Boolean, canExact: Boolean, batteryOk: Boolean,
+    notificationsOk: Boolean, onAllowNotifications: () -> Unit,
     onOpenA11y: () -> Unit, onOpenExact: () -> Unit, onAllowBattery: () -> Unit,
     locationEnabled: Boolean, locationFgOk: Boolean, locationBgOk: Boolean, locationServicesOn: Boolean,
     onRequestLocation: () -> Unit, onAllowBackground: () -> Unit, onOpenLocationServices: () -> Unit,
@@ -867,6 +900,16 @@ private fun SetupSheet(
         ) {
             if (!batteryOk) TextButton(onClick = onAllowBattery) { Text("Review battery settings") }
         }
+        SetupItem(
+            title = "Unlock reminders", ok = notificationsOk, required = false,
+            okText = "Notifications are allowed. Review the Work profile unlock reminders channel to enable banners/pop-ups if desired. Tap the reminder for Android's PIN screen or a work-app picker; WorkPause never reads your PIN.",
+            notText = "Notifications are blocked. Scheduling still works, but the work-profile unlock reminder cannot appear.",
+            stateLabel = if (notificationsOk) "Allowed" else "Blocked"
+        ) {
+            TextButton(onClick = onAllowNotifications) {
+                Text(if (notificationsOk) "Review reminder notifications" else "Allow reminder notifications")
+            }
+        }
         Text("Optional", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 8.dp))
         SetupItem(
@@ -931,7 +974,7 @@ private fun HelpDialog(onDismiss: () -> Unit) {
                 HelpPara("Copy and save", "Copy to other days replaces the selected days' behavior and times. Save schedule applies daily edits only. The WorkPause switch uses the saved schedule, not unsaved edits. Saving while WorkPause is OFF does not turn it on.")
                 HelpPara("Silent mode", "After a one-time ADB grant (MODIFY_QUIET_MODE), the app pauses/resumes your work profile via a direct system call — instant, no screen, no Quick Settings panel. No root.")
                 HelpPara("Visible fallback", "Without the grant, it taps the Quick Settings ‘Work apps’ tile via an Accessibility service, which briefly shows the panel.")
-                HelpPara("Resume while locked", "Android may require the device or work profile to be unlocked. WorkPause retries within the active work hours; it cannot bypass a PIN or employer policy.")
+                HelpPara("Resume and work PIN", "Notification setup is required: open Settings > Unlock reminders, allow notifications, and review the Work profile unlock reminders channel for banner/pop-up settings. After resume, tap the reminder: Android may ask for the work PIN directly, or choose a work app in the picker to trigger its challenge. If the phone is locked, WorkPause waits until you unlock it. Storage-unlocked status does not prove a separate work PIN is unlocked. Android, Samsung settings, and Do Not Disturb determine banner visibility. WorkPause never reads or bypasses your PIN.")
 }
         }
     )

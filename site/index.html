@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#101c2e">
-  <meta name="description" content="Put your Android work profile on your schedule. One WorkPause switch, daily hours, all-day rules, and no root. Free and open source.">
+  <meta name="description" content="Schedule your Android work profile with WorkPause 1.0.3. Daily rules, one ON/OFF switch, and tappable work-PIN reminders. Notification setup required.">
   <meta property="og:type" content="website">
   <meta property="og:title" content="WorkPause - Your work apps. On your terms.">
   <meta property="og:description" content="A simpler boundary between work and everything else. Schedule your Android work profile with one clear ON/OFF switch.">
@@ -58,7 +58,7 @@
             <li>No root</li>
             <li>Free &amp; open source</li>
           </ul>
-          <p class="hero-note">Preview release. Requires an existing Android work profile.</p>
+          <p class="hero-note">1.0.3 Preview. Requires an existing Android work profile.<br>New: work-PIN reminders. <a href="#unlock-reminders">Notification setup required.</a></p>
         </div>
         <figure class="product-preview">
           <div class="preview-label"><span class="status-dot" aria-hidden="true"></span> One switch. Your whole week.</div>
@@ -146,15 +146,26 @@
         <pre aria-label="ADB permission command"><code>adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE</code></pre>
       </div>
       <p class="setup-note">Installing without ADB is possible, but does not grant silent control. The optional accessibility fallback visibly operates Quick Settings, and confirmations may need your input. Android and employer restrictions always apply.</p>
+      <aside class="notification-setup" id="unlock-reminders" aria-labelledby="notification-title">
+        <p class="eyebrow">New in 1.0.3 / Setup required</p>
+        <h3 id="notification-title">Allow notifications for work-PIN reminders.</h3>
+        <ol>
+          <li>Open WorkPause <strong>Settings &rarr; Unlock reminders</strong> and allow notifications.</li>
+          <li>Review the <strong>Work profile unlock reminders</strong> channel in Android settings. On Samsung, enable this channel's banner/pop-up options if desired; menu labels vary by One UI version.</li>
+          <li>After scheduled resume, tap the reminder. Android may ask for the PIN directly, or offer a work-app picker so opening an app triggers the work challenge.</li>
+        </ol>
+        <p>Scheduling still works if notifications are blocked, but the unlock reminder cannot appear. Banners depend on system settings and Do Not Disturb; check the notification shade. No lock-screen popup or wake is requested, and WorkPause never reads or bypasses your PIN.</p>
+        <a class="text-link" href="https://github.com/marinfrankovic/WorkPause#set-up-unlock-notifications-required-for-reminders">Read notification setup and troubleshooting <span aria-hidden="true">&#8599;</span></a>
+      </aside>
     </section>
 
     <section class="verification-section" aria-labelledby="verification-title">
       <div class="wrap verification-grid">
         <div><p class="eyebrow">Open about what is tested</p><h2 id="verification-title">A preview.<br>Not a promise.</h2></div>
         <div class="verification-copy">
-          <p>The current app passed <strong>31 automated tests</strong>, build and lint checks, release-signature checks, and emulator UI smoke tests.</p>
+          <p>WorkPause <strong>1.0.3 Preview</strong> passed <strong>43 automated tests</strong>, build and lint checks, and release-signature checks. Its notification-to-PIN flow was tested with a disposable managed work profile on an Android 15 emulator, including cancellation, explicit retry, and reminder cleanup.</p>
           <p><strong>User-confirmed on Samsung Galaxy S24 Ultra with One UI 9:</strong> the owner personally tested WorkPause 1.0.2 and reports that it works as expected. Installation and setup readiness were also checked independently.</p>
-          <p>The owner also reports needing the <strong>work-profile PIN when the profile turns back on</strong>. This is expected: silent control does not unlock the profile or bypass credentials. This is one user's result, not a general compatibility certification. Other locked-device / credential scenarios and Intune / Knox compatibility remain unverified.</p>
+          <p>The owner also reports needing the <strong>work-profile PIN when the profile turns back on</strong>. This is expected: silent control does not unlock the profile or bypass credentials. The 1.0.3-preview update was installed and opened on that phone with permissions retained; its new Samsung notification and PIN flow still needs functional testing. These results are not a general compatibility certification. Other locked-device / credential scenarios and Intune / Knox compatibility remain unverified.</p>
           <a class="text-link" href="https://github.com/marinfrankovic/WorkPause/blob/main/docs/VERIFICATION.md">Read the full validation record <span aria-hidden="true">&#8599;</span></a>
         </div>
       </div>
@@ -166,7 +177,9 @@
         <details><summary>Does WorkPause OFF turn my work apps off?</summary><p>No. It stops WorkPause's automatic changes and leaves the current work-profile state untouched. Your phone's normal controls remain available. Your daily rules are kept for later.</p></details>
         <details><summary>Do I need an existing work profile?</summary><p>Yes. WorkPause schedules an existing Android work profile; it does not create one. Samsung Secure Folder is not a substitute for a managed work profile.</p></details>
         <details><summary>Can I install without a computer?</summary><p>Yes. Download the APK on your phone and follow Android's installation prompts. Silent control still needs the separate one-time ADB grant from a computer. See the setup guide for the optional visible fallback and sideloading restrictions.</p></details>
-        <details><summary>Can WorkPause bypass the phone or work-profile PIN?</summary><p>No. Silent control requests pause/resume without operating Quick Settings; it does not unlock the profile. When Android or employer policy requires the PIN, you must enter it before work apps become available. WorkPause implements deferred retries within the active work window, but other real-device locked-resume scenarios remain unverified.</p></details>
+        <details><summary>Why do I need to set up notifications?</summary><p>Unlock reminders are a separate setup step from silent control and exact alarms. In WorkPause Settings, allow Unlock reminders, then review the Work profile unlock reminders channel in Android settings. Scheduling is not disabled if you block notifications, but you will not receive the reminder.</p></details>
+        <details><summary>Will a PIN popup appear automatically when work starts?</summary><p>On Android 11+, scheduled resumes do not request automatic PIN popups. A reminder offers an explicit action: tap it for Android's PIN screen or a work-app picker. Enable banners/pop-ups in the reminder channel if you want a heads-up alert; Android, Samsung settings, and Do Not Disturb control whether it appears. Otherwise look in the notification shade. Android 10 uses an older resume API and may show its own credential UI.</p></details>
+        <details><summary>Can WorkPause bypass the phone or work-profile PIN?</summary><p>No. Silent control requests pause/resume without operating Quick Settings; it does not unlock the profile. When Android or employer policy requires the PIN, you must enter it before work apps become available. WorkPause never reads the PIN. Canceling returns to the picker, where Resume work profile is an explicit retry; if Android or policy blocks access, use your normal work-app icons. Other real-device locked-resume scenarios remain unverified.</p></details>
         <details><summary>Is it free and open source?</summary><p>Yes. WorkPause is an independently maintained Apache-2.0 fork of Work Profile Scheduler. The source, release APKs, license, and original attribution are available on GitHub.</p></details>
       </div>
     </section>
@@ -177,7 +190,7 @@
         <h2>Your time.<br>Your schedule.</h2>
         <p>A small tool for a clearer boundary.</p>
         <a class="button button-mint" href="https://github.com/marinfrankovic/WorkPause/releases/latest">Get WorkPause <span aria-hidden="true">&#8595;</span></a>
-        <span class="closing-note">Android 10+ &middot; Existing work profile required &middot; Preview</span>
+        <span class="closing-note">Android 10+ &middot; Existing work profile required &middot; 1.0.3 Preview</span>
       </div>
     </section>
   </main>
