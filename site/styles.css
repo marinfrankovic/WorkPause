@@ -80,6 +80,10 @@ h1 span { color: var(--mint); }
 .features-section { background: var(--wash); border-block: 1px solid #e8edf2; }
 .section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 32px; margin-bottom: 28px; }
 .section-heading > p { color: var(--muted); max-width: 440px; padding-bottom: 4px; }
+.notification-setup { margin-top: 24px; padding: 24px; border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 20px; background: var(--wash); }
+.notification-setup ol { padding-left: 24px; margin-block: 16px; }
+.notification-setup li + li { margin-top: 10px; }
+.notification-setup > p:not(.eyebrow) { color: var(--muted); margin-bottom: 16px; }
 .daily-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 18px; }
 .daily-card { display: grid; grid-template-rows: subgrid; grid-row: span 4; row-gap: 12px; padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: white; }
 .day-tag { font-size: .9rem; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: .07em; display: block; }

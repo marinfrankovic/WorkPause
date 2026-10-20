@@ -31,8 +31,12 @@ cat <<EOF
 ============================================================
  Build complete: $(pwd)/WorkPause-debug.apk
 
- Install + enable silent mode (one time):
+ Development install (not over a differently signed release APK):
    adb install -r WorkPause-debug.apk
    adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE
+
+ Unlock reminders also need notification setup in WorkPause Settings.
+ Allow notifications and review the Work profile unlock reminders channel.
+ Banner/pop-up visibility depends on Android, Samsung settings, and Do Not Disturb.
 ============================================================
 EOF

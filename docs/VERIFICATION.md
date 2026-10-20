@@ -1,6 +1,119 @@
 <!-- Modified for WorkPause: replace inherited claims with this fork's actual verification status. -->
 # WorkPause verification
 
+## WorkPause 1.0.3 Preview: unlock reminders
+
+The release uses version name **1.0.3**, version code **5**, and the existing
+release-signing identity. The GitHub release title retains **Preview** and is marked
+Latest for visibility. It updates over 1.0.2 and the local 1.0.3-preview build without
+uninstalling or clearing app data.
+
+The new reminder policy tests cover disabled schedules, ended work hours, removed
+profiles, absence of a resume request, waiting for the phone to unlock, resumed but
+credential-storage-locked profiles, still-paused profiles, unknown state, and the
+distinction between unlocked storage and a separate work-app credential challenge.
+An already running, storage-unlocked profile does not create a new reminder.
+
+Notifications use a separate high-importance channel, an immutable explicit activity
+PendingIntent, and a non-exported work-app picker. No hidden credential API, PIN
+collection, full-screen intent, or lock-screen wake is added. Public `LauncherApps`
+launches the user-selected work app so Android can enforce its work challenge.
+`UserManager.isUserUnlocked(profile)` reports credential-storage state, not every
+possible separate challenge state; notification wording reflects that limitation.
+On Android 11+, the credential-not-required flag is used for all scheduled resume
+attempts, including while the phone is unlocked. A foreground, user-initiated action
+uses the prompting overload. This avoids recurring system PIN popups on automatic
+retries after cancellation. Android 10 retains its existing older API behavior.
+
+Android sends `MANAGED_PROFILE_UNLOCKED` only to runtime-registered receivers. The
+application registers a non-exported receiver for the lifetime of its process;
+no background service is added. If Android stops that process before a work-app
+unlock outside WorkPause, immediate reminder cleanup cannot be guaranteed.
+
+### Local validation
+
+The managed-profile runtime checks below were performed on the signed
+**1.0.3-preview (code 4)** candidate. The **1.0.3 (code 5)** release retains that
+implementation, updates the version and setup/help wording, and has its own build,
+test, lint, package, and signature checks. They are not Samsung functional tests.
+
+- **43 unit tests passed:** 24 weekly-schedule, 7 location, and 12 reminder-policy tests.
+- Debug lint passed with 12 warnings and 1 informational finding; the new profile
+  reminder classes have no lint findings. The signed, optimized release build passed.
+- An isolated Android 15 / API 35 emulator used a disposable managed profile and
+  work PIN. Updating over 1.0.2 retained saved app state and the silent-control grant.
+- Saving today's OFF/ON rules exercised real schedule reconciliation: an actionable,
+  high-importance reminder appeared without an automatic credential popup.
+- Tapping the reminder opened Android Settings' work-PIN UI. Canceling returned to
+  the work-app picker, retained the reminder, and did not immediately prompt again.
+  Explicit retry reopened Android's credential UI; successful PIN entry cleared the
+  reminder through the runtime profile-unlock receiver.
+- Returning to the main screen after unlock did not mark an already-running profile
+  as a deferred resume; a no-op quiet-mode request is not a credential failure.
+- The public `LauncherApps` route opened the selected Files app in managed user 10.
+- Turning WorkPause OFF cleared an active reminder without changing the managed
+  profile's state. No WorkPause crash was found in the emulator crash buffer.
+- The reminder has its own explicit notification group so Android does not replace
+  its tap action with the main-screen action of an auto-grouped status summary.
+
+These checks do not establish Samsung heads-up behavior, delivery of an actual
+future timed alarm, or every locked-phone, location, and employer-policy scenario.
+
+The release APK is non-debuggable. Its application ID remains
+`io.github.marinfrankovic.workpause`; the work-app picker is non-exported. The release
+certificate SHA-256 remains:
+
+```text
+b57687219a28dd705da54e5d804e1b556d5bb4ff3f43fe35b389be016bddbefe
+```
+
+For the published APK checksum, use
+[`SHA256SUMS.txt`](https://github.com/marinfrankovic/WorkPause/releases/download/v1.0.3/SHA256SUMS.txt)
+from the matching release. The earlier **local 1.0.3-preview (code 4)** APK has SHA-256
+below; it is not the checksum of the version-code-5 release:
+
+```text
+6e69248989b41bd860e9af88802051658d878d0dd9da16c57b513f7654f3a44e
+```
+
+### Required Samsung acceptance test
+
+1. Update over 1.0.2 without uninstalling. Confirm saved rules and the silent-control
+   grant are retained. Allow notifications under Settings > Unlock reminders and
+   check Samsung's banner settings for the reminder channel.
+2. Keep the phone unlocked with a personal app open. Schedule pause, then resume a
+   few minutes later. Confirm a reminder appears in the notification shade, without
+   manually opening a work app first. A heads-up banner depends on Android settings.
+3. Tap Open work apps and select a work app. Verify that **Android**, not WorkPause,
+   asks for the required work PIN and opens the selected app after successful entry.
+4. Cancel PIN entry and confirm work apps remain protected and the reminder/picker
+   can be used again. If Android reports a profile unlock, the reminder is cleared;
+   this OEM-specific behavior needs observation.
+5. Repeat with an already unlocked work profile; do not expect an unnecessary new
+   reminder when no pause/resume transition occurred.
+6. Confirm OFF and the next scheduled pause clear the reminder. A previously opened
+   picker must not resume work apps after WorkPause is OFF or outside work hours.
+7. Disable notifications and verify the app shows the blocked reminder status while
+   scheduling still works. Do Not Disturb may suppress only the heads-up banner.
+
+### Galaxy S24 Ultra: preview update installed
+
+On **2026-10-20**, the signed **1.0.3-preview (code 4)** candidate was installed over
+1.0.2 on the personal side of the owner's **Galaxy S24 Ultra (SM-S928B)**.
+Installation returned success and foreground launch returned `Status: ok`.
+`MODIFY_QUIET_MODE` and `POST_NOTIFICATIONS` remained granted. The APK matched its
+recorded checksum; no uninstall or app-data reset was used.
+
+This confirms installation and retained permissions, not notification arrival,
+Samsung heads-up settings, or the new credential flow. No schedules were changed
+and no manual pause/resume test was initiated on the phone during deployment.
+**Notification setup remains necessary:** allow Unlock reminders in WorkPause and
+review the dedicated channel's banner/pop-up settings in Android. An allowed runtime
+permission does not prove those Samsung settings are enabled.
+
+The existing owner-confirmed functional results below apply to **1.0.2**, not the
+new notification or picker behavior.
+
 ## CI environment
 
 The Android build workflow uses JDK 17 and explicitly installs `platform-tools` and

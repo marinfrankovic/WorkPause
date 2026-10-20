@@ -15,6 +15,7 @@ import com.worksched.location.GeofenceManager
 import com.worksched.location.LocationGate
 import com.worksched.profile.WorkProfileToggler
 import com.worksched.profile.WorkProfileDetector
+import com.worksched.profile.WorkProfileUnlockNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -31,6 +32,7 @@ class ToggleReceiver : BroadcastReceiver() {
                 val schedule = store.scheduleFlow.first()
                 try {
                     if (!schedule.enabled) {
+                        WorkProfileUnlockNotifier.cancel(appCtx)
                         store.setPendingResume(false, 0L)
                         ResumeRetryScheduler.cancel(appCtx)
                         GeofenceManager.disarm(appCtx)
@@ -38,6 +40,7 @@ class ToggleReceiver : BroadcastReceiver() {
                         return@launch
                     }
                     if (!WorkProfileDetector(appCtx).isWorkProfilePresent()) {
+                        WorkProfileUnlockNotifier.cancel(appCtx)
                         Log.i(TAG, "No work profile; schedule retained without toggling")
                         return@launch
                     }
@@ -112,13 +115,14 @@ class ToggleReceiver : BroadcastReceiver() {
             Log.i(TAG, "Resume deferred; retry chain started")
             postNotification(context, true, deferred = true)
         }
+        WorkProfileUnlockNotifier.refresh(context)
     }
 
     private fun postNotification(context: Context, enable: Boolean, deferred: Boolean = false,
                                  locationPending: Boolean = false, failure: String? = null) {
         val text = failure ?: when {
             locationPending -> "Work apps will turn on when you reach your location."
-            deferred -> "Work profile will resume when you next unlock the phone."
+            deferred -> "Work profile needs unlocking. Use the unlock reminder after unlocking your phone."
             enable -> "Resuming work profile"
             else -> "Pausing work profile"
         }

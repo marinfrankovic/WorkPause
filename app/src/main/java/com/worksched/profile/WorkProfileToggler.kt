@@ -17,8 +17,8 @@ import com.worksched.service.WorkProfileA11yService
  *      permission has not been granted yet (so the app works on a fresh install).
  *
  * Return value (silent path): true = profile reached the desired state; false = a
- * resume was DEFERRED because the device is locked (credential-encrypted storage
- * unavailable). A deferred resume is NOT a failure and must NOT fall back to the
+ * resume was DEFERRED because device or work-profile credentials may be needed.
+ * A deferred resume is NOT a failure and must NOT fall back to the
  * A11y gesture — the caller persists a pending-resume flag and retries on unlock.
  */
 object WorkProfileToggler {
@@ -32,13 +32,16 @@ object WorkProfileToggler {
      * @return for the silent backend: the real result (false on resume = deferred/locked).
      *         for the A11y fallback: true if the gesture was dispatched.
      */
-    fun toggle(context: Context, enable: Boolean): Boolean {
+    suspend fun toggle(context: Context, enable: Boolean): Boolean {
+        if (enable) WorkProfileUnlockNotifier.recordResumeRequest(context)
+        else WorkProfileUnlockNotifier.cancel(context)
         if (QuietModeBackend.isAvailable(context)) {
             // Silent backend is authoritative when the permission is held. A false
             // result on resume means "deferred (locked)", handled by the caller —
             // never fall back to the visible gesture here.
             val ok = QuietModeBackend.toggle(context, enable)
             Log.i(TAG, "toggle(enable=$enable) via QuietModeBackend → $ok")
+            WorkProfileUnlockNotifier.refresh(context)
             return ok
         }
 
@@ -46,6 +49,7 @@ object WorkProfileToggler {
         Log.i(TAG, "toggle(enable=$enable) via A11y gesture (visible)")
         val handled = WorkProfileA11yService.requestToggle(context, enable)
         if (!handled) postSetupNotification(context, enable)
+        if (handled) WorkProfileUnlockNotifier.refresh(context)
         return handled
     }
 
