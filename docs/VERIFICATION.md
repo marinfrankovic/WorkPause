@@ -1,6 +1,231 @@
 <!-- Modified for WorkPause: replace inherited claims with this fork's actual verification status. -->
 # WorkPause verification
 
+## Schedule-aware manual control (local WorkPause 1.0.4, build 9)
+
+The opt-in **Respect manual Work Profile changes** compares each external manual
+profile transition with the saved schedule for the current local time:
+disagreement turns scheduling OFF, agreement turns it ON. The schedule is
+evaluated independently of the master enabled flag. Own scheduled requests,
+unlock-only events, and initial profile baselines do not change the master switch.
+Observation remains active while the option is enabled, including scheduling OFF.
+
+Regression coverage includes the exact 09:00-18:00 examples: manual OFF at 13:00
+disables scheduling, ON at 15:00 restores it, ON at 20:00 disables scheduling, and
+OFF at 21:00 restores it. Start/end boundaries, overnight/all-day rules, a manual
+return after a boundary or saved-rule edit, own request correlation, stale/failed
+requests, duplicate events, missing state, and profile replacement are covered.
+A manual pause is not automatically released by time passing or a saved-rule edit.
+
+The local artifact keeps the WorkPause name/package, displayed version **1.0.4**,
+internal version code **9**, and the independent local signing certificate.
+The increased internal code allows an in-place update with the same key without
+losing settings. The schedule-aware implementation is unchanged.
+
+### Validation results
+
+- **84 unit tests passed:** 41 manual-control policy tests, 24 weekly-schedule,
+  7 location, and 12 unlock-reminder tests.
+- Debug lint passed with 12 warnings and 1 informational finding.
+- The signed, optimized release build passed. APK inspection verified version
+  1.0.4 / code 9, the original package, plain WorkPause name, non-debuggable state,
+  and APK signature.
+- The version-only build 9 was installed in place on the S23. Its About screen
+  displays **Version 1.0.4**. Saved 09:00-18:00 hours, scheduling ON, the paused
+  evening profile, and foreground observation were retained without uninstalling.
+
+### Samsung Galaxy S23 acceptance
+
+The schedule-aware signed implementation was installed fresh on the connected Galaxy S23 running
+Android 17 / API 37. Silent control, notifications, exact alarms, and the battery
+exemption were configured; the optional manual-control setting was enabled.
+Tests used the real Android **Work apps** Quick Settings tile, with WorkPause's
+activity in the background during each profile toggle. No broadcasts were forged
+and no separate test-controller application was installed on the phone.
+
+The actual evening clock was left unchanged. Two saved work windows exercised
+both schedule states on the device:
+
+- With **09:00-18:00**, manual Android ON set scheduling OFF while the profile
+  remained ON. Manual Android OFF restored scheduling ON while the profile
+  correctly stayed OFF.
+- With **09:00-23:00**, manual Android OFF set scheduling OFF and left the profile
+  paused without a stale unlock reminder. Manual Android ON restored scheduling
+  ON. Manual pauses remained stable through 10-second dwell checks.
+- An unsaved 23:00 end-time edit did not affect comparison with the saved
+  18:00 rule, and external transitions did not overwrite that unfinished edit.
+- Saving an active rule resumed the profile through WorkPause without disabling
+  scheduling. Restoring the OFF rule paused the profile with scheduling still ON.
+  An ordinary scheduled resume briefly showed its existing conditional unlock
+  reminder while Android settled, then reached the normal ON status; this was not
+  a manual-OFF override failure.
+- Editing the saved window during a manual pause did not release it. Explicitly
+  reopening after force-stop restored the persisted pause and observation.
+  Another manual switch that still disagreed with the edited window kept
+  scheduling OFF; a later switch into agreement restored it.
+- The final saved configuration is **Monday-Friday 09:00-18:00**, Saturday/Sunday
+  **All day OFF**, scheduling **ON**, and the work profile correctly **OFF** in
+  the evening. Foreground monitoring remained active, including during pauses.
+
+The exact 13:00, 15:00, 20:00, and 21:00 timestamps are covered by policy tests;
+the real phone was not time-shifted. No work PIN was read or entered by the test.
+These results do not certify every employer policy, real location arrival,
+future timed-alarm delivery, OEM configuration, or battery-consumption percentage.
+Force-stop and explicit service stopping still interrupt background observation.
+
+## Historical validation records
+
+The following records describe earlier local artifacts, not the current
+1.0.4 / build 9 behavior or download.
+
+### Android Work Profile synchronization (local build 7)
+
+The opt-in synchronization maps external Android profile ON to scheduling ON and
+external OFF to scheduling OFF, during and outside configured work hours.
+Off-hours manual ON remains protected until manual OFF. Own scheduled requests
+are correlated so they do not disable the scheduler. Observation stays active
+while scheduling is OFF; disabling the opt-in stops the monitor.
+
+Policy tests cover both mirror directions, OFF followed by ON, an after-hours
+session ending inside an edited work window, stale requests, duplicate/unlock
+observations, unknown state, and profile removal/replacement. Persistence writes
+the switch and observation in one DataStore transaction. UI observation updates
+the live switch and pending/unlock state without replacing unsaved daily edits.
+
+The local APK uses the original WorkPause name/package, version **1.0.5**, code
+**7**, and the existing independent local signing key. It updates the locally
+signed 1.0.4 installation without uninstalling or losing configuration.
+
+### Validation results
+
+- **76 unit tests passed:** 33 synchronization-policy, 24 weekly-schedule,
+  7 location, and 12 unlock-reminder tests.
+- Debug lint passed with 12 warnings and 1 informational finding. The signed,
+  optimized, non-debuggable release build passed.
+- APK inspection confirmed version 1.0.5 / code 7, the original package ID and
+  WorkPause label, and the same independent RSA-4096 signing certificate.
+
+### Samsung Galaxy S23 acceptance
+
+The optimized signed APK was updated in place on a connected Galaxy S23 running
+Android 17 / API 37. The existing configuration, grants, and enabled opt-in were
+retained. Tests used the phone's real Android **Work apps** Quick Settings tile,
+not forged broadcasts or a separate controller app.
+
+- Applying an OFF schedule paused the profile while scheduling remained ON,
+  verifying that an own request does not mirror OFF to the scheduler.
+- With scheduling OFF, foreground observation remained active.
+- Android ON outside the work window enabled scheduling and retained the manual
+  ON state without an immediate scheduled pause.
+- Restoring the saved active work window retained the manual ON protection.
+- Android OFF with WorkPause in the background disabled scheduling and paused
+  the profile. Both remained OFF through a 15-second dwell; the UI displayed
+  neither a pending unlock request nor a work-PIN reminder.
+- Android ON with WorkPause in the background enabled scheduling again and
+  resumed normal in-hours scheduling status.
+- The original saved daily rule and times were restored. The profile was left
+  ON with scheduling ON, matching the final Android ON action.
+- App-only logs confirmed the mirrored ON, OFF, ON decisions. The foreground
+  service remained active with `specialUse` type `0x40000000`.
+
+No work PIN was read or entered by the test. These checks do not certify every
+Samsung configuration, employer policy, real location arrival, future timed alarm
+delivery, or battery-consumption percentage. Force-stop and explicit service
+stopping still interrupt observation.
+
+### WorkPause local build 6 verification record
+
+That local APK uses the original application ID
+`io.github.marinfrankovic.workpause`, the **WorkPause** launcher label, version
+**1.0.4**, and version code **6**. It is independently signed, not an official
+author release. Installing it over the author's differently signed APK requires
+uninstalling that APK first and repeating setup.
+
+The feature is off by default. It temporarily suspends automation after an
+external work-profile resume outside the current schedule and restores the
+schedule after the user pauses the profile. It does not change the saved master
+switch or add a daytime manual-OFF override.
+
+The monitor is a non-exported, event-driven foreground service with a silent,
+low-importance notification channel. It has no polling loop or wake lock.
+Android 14+ uses the declared `specialUse` type and subtype explanation. Private
+session state uses DataStore and the public user-serial API rather than hidden
+UserHandle APIs. Own requests are tracked before dispatch and bounded, so failed,
+expired, duplicate, or unrelated transitions are not treated as manual sessions.
+
+Local unit validation passes **66 tests**, including **23 new manual-session
+policy tests**, the existing 24 schedule tests, 7 location tests, and 12
+unlock-reminder tests. Debug lint passes with 12 warnings and 1 informational
+finding; the new monitor/coordinator/policy files have no lint findings. The
+signed, R8-optimized build passes.
+
+### Isolated runtime acceptance
+
+An Android 15 / API 35 emulator used a disposable managed profile. A separate
+test-only controller requested real quiet-mode transitions through the public
+Android API; no profile broadcasts were forged. The controller is not part of
+the APK or repository.
+
+These functional checks used the original-package debug build and an earlier
+separately packaged candidate. Repackaging as local 1.0.4 changes the version and
+distribution identity, not the manual-session implementation.
+
+- An external after-hours ON while WorkPause's activity was closed started a
+  manual session in the background. The profile remained ON through subsequent
+  reconciliation, and reopening the app showed the temporary-pause status.
+- External OFF ended the session and restored normal scheduling automatically.
+- Master OFF preserved the running profile, stopped observation, and remained
+  OFF through subsequent external OFF/ON changes. Turning the master back ON
+  applied the saved OFF rule without classifying that own action as manual.
+- Turning the opt-in setting OFF during a session reapplied the saved OFF rule
+  and stopped the monitoring service.
+- Force-stop followed by explicit reopening restored a persisted running manual
+  session without pausing the profile. A profile paused while WorkPause was
+  stopped ended the persisted session on reopening.
+- Changing the saved rule from All day OFF to All day ON retained an existing
+  manual session. Ending that session applied the new ON rule; returning to an
+  OFF rule did not create an accidental manual session.
+- Removing the managed profile cleared the session and displayed the existing
+  no-profile status without changing the saved master switch.
+- The independently installed, non-debuggable candidate also passed the real
+  external ON/OFF workflow. Its monitor was confirmed foreground with
+  `specialUse` type `0x40000000`, a silent channel, and an ongoing notification.
+- No WorkPause crash was observed. An unrelated Google Play services work-user
+  storage-unlock crash occurred in the disposable image and is not a WorkPause
+  compatibility result.
+
+An Android 10 / API 29 emulator installed and launched the same optimized candidate.
+The opt-in monitor successfully entered foreground using the pre-14 API branch,
+remained active with the activity closed, and stopped when the master was OFF.
+This stock image does **not** make `MODIFY_QUIET_MODE` ADB-grantable; Android
+explicitly rejected the grant as a non-changeable permission. No platform
+permission workaround was used. Full Android 10 quiet-mode automation was
+therefore **not** verified; the existing visible fallback remains the alternative.
+
+These results do not verify Samsung notification behavior, actual future alarm
+delivery, battery percentages, every employer policy, real locked/PIN sessions,
+or real-device location arrivals. Force-stop and explicit service stopping can
+interrupt monitoring, and missed event history cannot always be reconstructed.
+
+### Artifact inspection
+
+The APK signature verifies with APK Signature Scheme v2 and an independently
+generated RSA-4096 key. The local APK has minimum API 29, target API 35, the
+**WorkPause** launcher label, version **1.0.4** / code **6**, and no debuggable flag. Its monitor is
+non-exported. Its certificate SHA-256 is:
+
+```text
+c747bd5b5c5baf559aaba6adaf69b6c5eb95d038fb166071ab48e19918187c8f
+```
+
+Use the local release's attached `SHA256SUMS.txt` for the APK file checksum.
+
+The local APK uses the original package ID but an independent signing key.
+Uninstalling the author's APK clears WorkPause's settings and permissions; repeat
+setup after installing the local build. Switching back to an author-signed APK
+also requires uninstalling the local APK. No personal phone was modified during
+verification.
+
 ## WorkPause 1.0.3 Preview: unlock reminders
 
 The release uses version name **1.0.3**, version code **5**, and the existing

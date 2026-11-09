@@ -89,6 +89,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.worksched.profile.ManualSessionSettings
+import com.worksched.profile.ManualSessions
+import com.worksched.service.ManualSessionService
 import com.worksched.R
 import com.worksched.alarm.AlarmScheduler
 import com.worksched.data.Schedule
@@ -133,6 +137,7 @@ import com.worksched.profile.WorkProfileUnlockNotifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -145,6 +150,8 @@ import java.util.Locale
 fun MainScreen() {
     val ctx = LocalContext.current
     val store = remember { ScheduleStore(ctx) }
+    val manualSession by store.manualSessionFlow.collectAsStateWithLifecycle(initialValue = ManualSessionSettings())
+    val monitor by ManualSessionService.status.collectAsStateWithLifecycle()
     val detector = remember { WorkProfileDetector(ctx) }
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -196,6 +203,19 @@ fun MainScreen() {
         locationBgOk = LocationGate.hasBackgroundLocation(ctx)
     }
 
+    LaunchedEffect(manualSession) {
+        if (manualSession.enabled) {
+            refresh()
+            pendingResume = store.pendingResume()
+            unlockReminder = store.unlockReminderRequested()
+        }
+    }
+    LaunchedEffect(store) {
+        store.scheduleFlow.collect { saved ->
+            workPauseEnabled = saved.enabled
+            if (loaded) schedule = schedule.copy(enabled = saved.enabled)
+        }
+    }
     LaunchedEffect(Unit) {
         val saved = store.scheduleFlow.first()
         workPauseEnabled = saved.enabled
@@ -206,6 +226,8 @@ fun MainScreen() {
             schedule = schedule.copy(enabled = saved.enabled)
         }
         ready = true
+        ManualSessions.refresh(ctx)
+        ManualSessionService.update(ctx)
         refresh()
         ResumeReconcileReceiver.reconcile(ctx)
         pendingResume = store.pendingResume()
@@ -218,6 +240,8 @@ fun MainScreen() {
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         refresh(); scope.launch {
+            ManualSessions.refresh(ctx)
+            ManualSessionService.update(ctx)
             WorkProfileUnlockNotifier.refresh(ctx)
             pendingResume = store.pendingResume()
             unlockReminder = store.unlockReminderRequested()
@@ -236,8 +260,10 @@ fun MainScreen() {
         ResumeRetryScheduler.cancel(ctx)
         GeofenceManager.disarm(ctx)
         store.setGeofenceArmed(false)
-        AlarmScheduler.scheduleAll(ctx, saved)
-        if (saved.enabled) AlarmScheduler.requestReconcile(ctx)
+        val current = ManualSessions.refresh(ctx).schedule
+        ManualSessionService.update(ctx)
+        AlarmScheduler.scheduleAll(ctx, current)
+        if (current.enabled) AlarmScheduler.requestReconcile(ctx)
     }
 
     val fgLocationPerms = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
@@ -314,7 +340,7 @@ fun MainScreen() {
                         saving = true
                         scope.launch {
                             try {
-                                val saved = store.setEnabled(enabled)
+                                val saved = ManualSessions.setEnabled(ctx, enabled)
                                 workPauseEnabled = saved.enabled
                                 schedule = schedule.copy(enabled = saved.enabled)
                                 applySchedule(saved)
@@ -333,10 +359,19 @@ fun MainScreen() {
                 onSetup = { showSetup = true }
             )
             if (ready) Text(
-                if (workPauseEnabled) "ON - following your saved schedule."
-                else "OFF - work apps stay as set on your phone.",
+                when {
+                    !workPauseEnabled && manualSession.enabled && manualSession.state.active -> stringResource(R.string.manual_paused_status)
+                    !workPauseEnabled && manualSession.enabled -> stringResource(R.string.manual_off_status)
+                    !workPauseEnabled -> "OFF - work apps stay as set on your phone."
+                    else -> "ON - following your saved schedule."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (ready && manualSession.enabled && !monitor.running) Text(
+                monitor.error ?: stringResource(R.string.manual_monitor_stopped),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error
             )
 
             ScheduleCard(
@@ -371,8 +406,8 @@ fun MainScreen() {
                 Text(
                     when {
                         !present -> "No work profile found"
-                        unlockReminder -> "Work profile may need your work PIN"
-                        pendingResume -> "Waiting for unlock"
+                        unlockReminder && workPauseEnabled -> "Work profile may need your work PIN"
+                        pendingResume && workPauseEnabled -> "Waiting for unlock"
                         quiet == true -> "Work apps are paused"
                         quiet == false -> "Work apps are on"
                         else -> "Work profile status unavailable"
@@ -382,7 +417,7 @@ fun MainScreen() {
                     modifier = Modifier.weight(1f)
                 )
             }
-            if (unlockReminder) TextButton(onClick = {
+            if (unlockReminder && workPauseEnabled) TextButton(onClick = {
                 ctx.startActivity(Intent(ctx, com.worksched.profile.UnlockWorkProfileActivity::class.java))
             }) { Text("Open work apps") }
             if (needsSetup) TextButton(onClick = { showSetup = true }) { Text("Finish setup in Settings") }
@@ -399,6 +434,34 @@ fun MainScreen() {
                 profilePresent = present,
                 silent = silent, a11yOn = a11yOn, canExact = canExact, batteryOk = batteryOk,
                 notificationsOk = notificationsOk,
+                manualEnabled = manualSession.enabled,
+                manualStatus = when {
+                    monitor.error != null -> requireNotNull(monitor.error)
+                    !monitor.running -> ctx.getString(R.string.manual_monitor_stopped)
+                    manualSession.state.active -> ctx.getString(R.string.manual_monitor_paused)
+                    !workPauseEnabled -> ctx.getString(R.string.manual_monitor_off)
+                    else -> ctx.getString(R.string.manual_monitor_watching)
+                },
+                manualEditable = ready && !saving,
+                onManualChange = { enabled ->
+                    saving = true
+                    scope.launch {
+                        try {
+                            store.setManualSessionsEnabled(enabled)
+                            ManualSessions.refresh(ctx)
+                            ManualSessionService.update(ctx)
+                            AlarmScheduler.requestReconcile(ctx)
+                        } catch (e: IOException) {
+                            Log.e("WorkPauseUI", "Could not save manual-session preference", e)
+                            snackbar.showSnackbar("Could not save manual-session settings. Please try again.")
+                        } catch (e: SecurityException) {
+                            Log.e("WorkPauseUI", "Android denied monitoring setup", e)
+                            snackbar.showSnackbar("Android blocked monitoring. Review permissions in Settings.")
+                        } finally {
+                            saving = false
+                        }
+                    }
+                },
                 onAllowNotifications = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                         ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
@@ -425,6 +488,7 @@ fun MainScreen() {
                 onRecheck = {
                     refresh()
                     scope.launch {
+                        ManualSessionService.update(ctx)
                         snackbar.currentSnackbarData?.dismiss()
                         snackbar.showSnackbar(if (QuietModeBackend.isAvailable(ctx)) "Silent mode active" else "Grant not found — using the visible fallback")
                     }
@@ -831,6 +895,7 @@ private fun SetupSheet(
     profilePresent: Boolean,
     silent: Boolean, a11yOn: Boolean, canExact: Boolean, batteryOk: Boolean,
     notificationsOk: Boolean, onAllowNotifications: () -> Unit,
+    manualEnabled: Boolean, manualStatus: String, manualEditable: Boolean, onManualChange: (Boolean) -> Unit,
     onOpenA11y: () -> Unit, onOpenExact: () -> Unit, onAllowBattery: () -> Unit,
     locationEnabled: Boolean, locationFgOk: Boolean, locationBgOk: Boolean, locationServicesOn: Boolean,
     onRequestLocation: () -> Unit, onAllowBackground: () -> Unit, onOpenLocationServices: () -> Unit,
@@ -913,6 +978,19 @@ private fun SetupSheet(
         Text("Optional", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(top = 8.dp))
         SetupItem(
+            title = stringResource(R.string.manual_setting_title), ok = manualEnabled, required = false,
+            okText = stringResource(R.string.manual_setting_description),
+            notText = stringResource(R.string.manual_setting_description),
+            stateLabel = if (manualEnabled) "Enabled" else "Off"
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Text("Enable monitoring", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Switch(checked = manualEnabled, onCheckedChange = onManualChange, enabled = manualEditable,
+                    modifier = Modifier.semantics { contentDescription = ctx.getString(R.string.manual_setting_title) })
+            }
+            if (manualEnabled) Text(manualStatus, style = MaterialTheme.typography.bodySmall)
+        }
+        SetupItem(
             title = "Visible fallback", ok = a11yOn, required = false,
             okText = if (silent) "Enabled, but silent control takes priority." else "Accessibility can operate the Work apps tile.",
             notText = if (silent) "Not needed while silent control is active." else "Only if you skip ADB. Opens Quick Settings visibly; confirmations stay manual.",
@@ -971,6 +1049,7 @@ private fun HelpDialog(onDismiss: () -> Unit) {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 HelpPara("Daily behavior", "Select a weekday and choose Schedule, All day ON, or All day OFF. Schedule keeps work apps ON from the From time until the To time; an earlier To time means the next day. All day OFF takes priority at midnight over previous overnight hours.")
                 HelpPara("WorkPause ON or OFF", "ON follows your saved weekly schedule and applies the current scheduled state. OFF stops WorkPause's automatic changes and leaves work apps as set on your phone. The switch applies immediately, without saving. It does not change your phone's own settings or employer policies.")
+                HelpPara("Manual profile changes (optional)", "Enable Respect manual Work Profile changes in Settings. After each manual Android profile switch, WorkPause compares the new profile state with your saved schedule for the current time, even while scheduling is OFF. A mismatch turns scheduling OFF so WorkPause leaves your choice alone; a match turns scheduling ON again. For 09:00-18:00 hours: manual OFF at 13:00 pauses scheduling and ON at 15:00 restores it; manual ON at 20:00 pauses scheduling and OFF at 21:00 restores it. A time boundary or a schedule edit alone does not end a manual pause. Own scheduled changes do not count as manual switches. Monitoring stays active while the option is enabled; turn the option OFF to stop it. Force-stop interrupts observation.")
                 HelpPara("Copy and save", "Copy to other days replaces the selected days' behavior and times. Save schedule applies daily edits only. The WorkPause switch uses the saved schedule, not unsaved edits. Saving while WorkPause is OFF does not turn it on.")
                 HelpPara("Silent mode", "After a one-time ADB grant (MODIFY_QUIET_MODE), the app pauses/resumes your work profile via a direct system call — instant, no screen, no Quick Settings panel. No root.")
                 HelpPara("Visible fallback", "Without the grant, it taps the Quick Settings ‘Work apps’ tile via an Accessibility service, which briefly shows the panel.")

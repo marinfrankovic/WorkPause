@@ -14,6 +14,8 @@ import com.worksched.alarm.ResumeRetryScheduler
 import com.worksched.data.ScheduleStore
 import com.worksched.profile.WorkProfileToggler
 import com.worksched.profile.WorkProfileUnlockNotifier
+import com.worksched.profile.ManualSessions
+import com.worksched.profile.ToggleResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -41,7 +43,8 @@ class GeofenceReceiver : BroadcastReceiver() {
                 val schedule = store.scheduleFlow.first()
 
                 // Stale guard: gate turned off, or we're past today's window → stop listening.
-                if (!schedule.hasValidLocation() || !LocationGate.inResumeWindowNow(schedule)) {
+                if (!schedule.hasValidLocation() || !LocationGate.inResumeWindowNow(schedule) ||
+                    !ManualSessions.allows(appCtx, true)) {
                     store.setGeofenceArmed(false)
                     GeofenceManager.disarm(appCtx)
                     Log.i(TAG, "ENTER ignored (gate off or outside window); disarmed")
@@ -59,7 +62,8 @@ class GeofenceReceiver : BroadcastReceiver() {
                 GeofenceManager.disarm(appCtx)
 
                 val ok = WorkProfileToggler.toggle(appCtx, enable = true)
-                if (ok) {
+                if (ok == ToggleResult.BLOCKED) return@launch
+                if (ok == ToggleResult.SUCCEEDED) {
                     store.setPendingResume(false, 0L)
                     ResumeRetryScheduler.cancel(appCtx)
                     notify(appCtx, "Work apps resumed — you're at your location.")
@@ -67,7 +71,10 @@ class GeofenceReceiver : BroadcastReceiver() {
                 } else {
                     // Locked on arrival → defer to next unlock via the existing retry backbone.
                     val deadline = minOf(System.currentTimeMillis() + DEFER_WINDOW_MS, LocationGate.resumeWindowEndMillis(schedule))
-                    store.setPendingResume(true, deadline)
+                    if (!store.setPendingResume(true, deadline)) {
+                        ResumeRetryScheduler.cancel(appCtx)
+                        return@launch
+                    }
                     ResumeRetryScheduler.schedule(appCtx, attempt = 0)
                     notify(appCtx, "Work profile needs unlocking. Use the unlock reminder after unlocking your phone.")
                     Log.i(TAG, "arrival resume deferred (device locked)")

@@ -106,10 +106,94 @@ WorkPause is OFF does not turn it on or change the work profile.
 
 <img src="docs/screenshots/workpause-main.png" width="320" alt="WorkPause compact header and per-day scheduler in the Android emulator">
 
+## Schedule-aware manual Work Profile control
+
+Enable **Settings > Respect manual Work Profile changes** once to use Android's
+normal Work Profile control without having to manage WorkPause separately.
+The option is **off by default**.
+
+After each manual profile switch in Android, WorkPause compares the new profile
+state with the **saved weekly schedule for the current local time**:
+
+- **Different from the schedule:** scheduling turns **OFF**, leaving your manual
+  choice alone and cancelling automatic profile changes.
+- **Matches the schedule:** scheduling turns **ON** again and future schedule
+  changes are restored.
+
+For a saved **09:00-18:00** work window:
+
+| Time | Manual Android profile switch | Scheduling |
+|---|---|---|
+| 13:00 | OFF, contrary to the scheduled ON state | OFF |
+| 15:00 | ON, matching the scheduled ON state | ON |
+| 20:00 | ON, contrary to the scheduled OFF state | OFF |
+| 21:00 | OFF, matching the scheduled OFF state | ON |
+
+This is **not** direct ON-to-ON / OFF-to-OFF mirroring. Evening manual OFF
+restores scheduling even though the work profile stays OFF.
+
+Comparison uses the saved rules even while scheduling is OFF, not unsaved edits
+or the state that was expected when the manual pause began. Overnight and all-day
+rules are included. A schedule edit or clock boundary alone does not end a manual
+pause; a subsequent manual switch is evaluated against the schedule at that
+moment. Explicit in-app WorkPause ON can also restore normal scheduling.
+
+WorkPause's own scheduled profile changes and unlock-only events do not count as
+manual switches. A normal scheduled pause leaves scheduling ON for the next start.
+The main switch and profile status update live without replacing unsaved edits.
+
+Monitoring remains active **while the option is enabled, even when scheduling is
+OFF**, so it can observe the next manual return to the scheduled state.
+It uses profile-change events, no
+continuous polling or wake lock, and a quiet ongoing **Work profile synchronization**
+notification. Turning the option OFF stops monitoring and leaves the saved
+scheduling switch as set. Explicit in-app switch changes still apply the normal
+schedule immediately. Force-stop, explicit service stopping, and OEM/employer
+restrictions can interrupt observation; missed event history cannot always be
+reconstructed. No battery-percentage saving or consumption claim is made.
+
+### Independently signed local build
+
+The local next-version APK is **WorkPause 1.0.4** (version code **9**), with the
+normal **WorkPause** launcher label and original application ID
+`io.github.marinfrankovic.workpause`. It has no separate preview variant or suffix.
+It is **not** the author's signed release: it uses an independent local signing
+key.
+
+Earlier builds signed with the same local key update to 1.0.4 **without
+uninstalling**, retaining saved rules and grants.
+The displayed version stays **1.0.4**; Android's internal `versionCode` increases
+for installable updates. The current download is
+[WorkPause 1.0.4, build 9](https://github.com/eldarku/WorkPause/releases/tag/v1.0.4-local-build.9).
+
+**Uninstall the author's installed WorkPause before installing this local APK.**
+Android cannot update across different signing keys. Uninstalling clears
+WorkPause's saved schedule and permission grants, so note your schedule first and
+repeat the exact-alarm, battery, notification, and silent-control setup:
+
+```powershell
+adb shell pm grant io.github.marinfrankovic.workpause android.permission.MODIFY_QUIET_MODE
+```
+
+Some older Android versions, including the stock Android 10 test image, do not
+allow this ADB grant. Use the existing visible fallback on those devices; the
+local build does not bypass Android's permission rules.
+
+Enable **Respect manual Work Profile changes** once in Settings. An enabled option
+from an earlier locally signed installation remains enabled after updating. The feature does not
+bypass Android's work PIN or employer policy. Returning to an author-signed APK
+also requires uninstalling the independently signed local build first. Future
+local builds signed with the same local key can update this installation normally.
+
+Build the optimized, non-debuggable APK with the existing private signing setup
+and `tools\Build-Release.ps1`. Its output is
+`app\build\outputs\apk\release\app-release.apk`. Distribute the local APK with an
+explicit independent-signing notice, not as the author's official release.
+
 ## App identity
 
 - Application ID: `io.github.marinfrankovic.workpause`
-- Current version: `1.0.3` (version code `5`), release title **Preview**
+- Current branch version: `1.0.4` (version code `9`); the author's published release linked above remains `1.0.3`.
 - Repository: [marinfrankovic/WorkPause](https://github.com/marinfrankovic/WorkPause)
 
 WorkPause installs separately from the original application. Settings and permission
